@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="bn">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>মেধা কোচিং সেন্টার ম্যানেজার</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="loginView" class="login-wrap" hidden>
+      <form id="loginForm" class="login-card panel">
+        <div class="brand brand-center">
+          <div class="brand-mark">মে</div>
+          <div>
+            <h1>মেধা কোচিং সেন্টার</h1>
+            <p>ম্যানেজার লগইন</p>
+          </div>
+        </div>
+        <label>
+          ইউজারনেম
+          <input id="loginUser" type="text" autocomplete="username" placeholder="যেমন: admin" required />
+        </label>
+        <label>
+          পাসওয়ার্ড
+          <input id="loginPass" type="password" autocomplete="current-password" placeholder="••••••••" required />
+        </label>
+        <p id="loginError" class="login-error" hidden></p>
+        <button class="primary-btn" type="submit">লগইন করো</button>
+        <p class="login-hint">ডেমো অ্যাডমিন: <b>admin</b> / <b>admin123</b> — লগইন করে ইউজার পেজ থেকে এডিটর / ভিউয়ার / শিক্ষার্থী বানাও।</p>
+      </form>
+    </div>
+
+    <div id="appShell" class="app-shell" hidden>
+      <header class="mobile-bar">
+        <button id="menuToggle" class="menu-btn" type="button" aria-label="মেনু খোলো">☰</button>
+        <div class="mobile-brand">
+          <div class="brand-mark">মে</div>
+          <strong>মেধা কোচিং সেন্টার</strong>
+        </div>
+        <button id="mobileLogout" class="menu-btn menu-logout" type="button" aria-label="লগআউট">⏻</button>
+      </header>
+      <aside id="sidebar" class="sidebar" aria-label="Main navigation">
+        <div class="brand brand-desktop">
+          <div class="brand-mark">মে</div>
+          <div>
+            <h1>মেধা কোচিং সেন্টার</h1>
+            <p>ম্যানেজার</p>
+          </div>
+        </div>
+        <nav id="mainNav" class="nav-tabs" aria-label="Sections">
+          <button class="nav-tab" data-view="dashboard" type="button">ড্যাশবোর্ড</button>
+          <button class="nav-tab" data-view="students" type="button">শিক্ষার্থী</button>
+          <button class="nav-tab" data-view="batches" type="button">ব্যাচ</button>
+          <button class="nav-tab" data-view="courses" type="button">কোর্স ও প্যাকেজ</button>
+          <button class="nav-tab" data-view="attendance" type="button">হাজিরা</button>
+          <button class="nav-tab" data-view="fees" type="button">ফি</button>
+          <button class="nav-tab" data-view="money" type="button">হিসাব</button>
+          <button class="nav-tab" data-view="users" type="button">ইউজার</button>
+          <button class="nav-tab" data-view="mybatch" type="button">আমার ব্যাচ</button>
+        </nav>
+        <div class="sidebar-footer">
+          <div class="user-box">
+            <div id="userBadge" class="user-badge"></div>
+            <button id="logoutBtn" class="logout-btn" type="button">লগআউট</button>
+          </div>
+          <div id="adminTools" class="admin-tools">
+            <button id="adminToolsToggle" class="admin-toggle" type="button" aria-expanded="false">
+              <span>⚙ ব্যাকআপ ও ডেমো</span>
+              <span class="admin-chevron">▾</span>
+            </button>
+            <div id="adminToolsBody" class="admin-tools-body" hidden>
+              <button id="seedDataBtn" class="secondary-btn" type="button">ডেমো ডেটা লোড করো</button>
+              <button id="exportDataBtn" class="secondary-btn" type="button">ব্যাকআপ ডাউনলোড</button>
+              <label class="secondary-btn file-btn" for="importFileInput">ব্যাকআপ আপলোড</label>
+              <input id="importFileInput" type="file" accept="application/json" hidden />
+              <button id="clearDataBtn" class="danger-btn" type="button">সব ডেটা মুছো</button>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="content-inner">
+          <header class="topbar">
+            <div>
+              <p class="eyebrow">কোচিং ওয়ার্কস্পেস</p>
+              <h2 id="pageTitle">ড্যাশবোর্ড</h2>
+            </div>
+            <div class="today-card">
+              <span>আজকের তারিখ</span>
+              <strong id="todayLabel"></strong>
+            </div>
+          </header>
+
+          <section id="dashboard" class="view">
+            <div class="metric-grid">
+              <article class="metric">
+                <span>মোট শিক্ষার্থী</span>
+                <strong id="metricStudents">0</strong>
+              </article>
+              <article class="metric">
+                <span>চালু ব্যাচ</span>
+                <strong id="metricBatches">0</strong>
+              </article>
+              <article class="metric">
+                <span>আজকে উপস্থিত</span>
+                <strong id="metricPresent">0</strong>
+              </article>
+              <article class="metric">
+                <span>বকেয়া ফি</span>
+                <strong id="metricDue">৳0</strong>
+              </article>
+            </div>
+
+            <div class="dashboard-grid">
+              <section class="panel">
+                <div class="panel-header"><h3>প্রতি ব্যাচে শিক্ষার্থী</h3></div>
+                <div id="chartBatches" class="bar-chart"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-header"><h3>ফি: আদায় বনাম বকেয়া</h3></div>
+                <div id="chartFees" class="bar-chart"></div>
+              </section>
+            </div>
+
+            <div class="dashboard-grid">
+              <section class="panel">
+                <div class="panel-header"><h3>নতুন শিক্ষার্থী</h3></div>
+                <div id="recentStudents" class="compact-list"></div>
+              </section>
+              <section class="panel">
+                <div class="panel-header"><h3>ফি-এর অবস্থা</h3></div>
+                <div id="feeSummary" class="compact-list"></div>
+              </section>
+            </div>
+
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3>আজকের হাজিরা</h3></div>
+              <div id="attendanceSummary" class="compact-list"></div>
+            </section>
+          </section>
+
+          <section id="students" class="view">
+            <div class="work-grid">
+              <form id="studentForm" class="panel form-panel">
+                <div class="panel-header"><h3 id="studentFormTitle">নতুন শিক্ষার্থী</h3></div>
+                <label>
+                  শিক্ষার্থীর নাম *
+                  <input id="studentName" type="text" placeholder="যেমন: ফারহান আহমেদ" required maxlength="80" />
+                </label>
+                <label>
+                  মোবাইল নম্বর
+                  <input id="studentPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" />
+                </label>
+                <label>
+                  অভিভাবক
+                  <input id="guardianName" type="text" placeholder="অভিভাবকের নাম" maxlength="80" />
+                </label>
+                <label>
+                  অভিভাবকের মোবাইল
+                  <input id="guardianPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" />
+                </label>
+                <label>
+                  হোয়াটসঅ্যাপ নম্বর
+                  <input id="whatsappNumber" type="tel" placeholder="01XXXXXXXXX" maxlength="15" />
+                </label>
+                <label>
+                  কলেজ / স্কুল
+                  <input id="collegeName" type="text" placeholder="যেমন: ঢাকা কলেজ" maxlength="100" />
+                </label>
+                <label>
+                  ব্যাচ
+                  <select id="studentBatch"></select>
+                </label>
+                <label>
+                  এনরোল করা কোর্স / প্যাকেজ
+                  <select id="studentCourse"></select>
+                </label>
+                <label>
+                  মাসিক ফি
+                  <input id="studentFee" type="number" min="0" step="100" placeholder="3000" />
+                </label>
+                <div class="form-actions">
+                  <button id="studentSubmitBtn" class="primary-btn" type="submit">শিক্ষার্থী যোগ করো</button>
+                  <button id="studentCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
+                </div>
+              </form>
+
+              <section class="panel table-panel">
+                <div class="panel-header">
+                  <h3>শিক্ষার্থী</h3>
+                  <input id="studentSearch" class="search-input" type="search" placeholder="শিক্ষার্থী খোঁজো" />
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>নাম</th>
+                        <th>যোগাযোগ</th>
+                        <th>কলেজ</th>
+                        <th>ব্যাচ</th>
+                        <th>কোর্স / প্যাকেজ</th>
+                        <th>ফি</th>
+                        <th class="col-action">অ্যাকশন</th>
+                      </tr>
+                    </thead>
+                    <tbody id="studentRows"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="batches" class="view">
+            <div class="work-grid">
+              <form id="batchForm" class="panel form-panel">
+                <div class="panel-header"><h3 id="batchFormTitle">নতুন ব্যাচ</h3></div>
+                <label>
+                  ব্যাচের নাম *
+                  <input id="batchName" type="text" placeholder="৯ম শ্রেণি গণিত" required maxlength="80" />
+                </label>
+                <label>
+                  শিক্ষক
+                  <input id="batchTeacher" type="text" placeholder="শিক্ষকের নাম" maxlength="80" />
+                </label>
+                <label>
+                  সময়সূচি
+                  <input id="batchSchedule" type="text" placeholder="রবি মঙ্গল বৃহস্পতি, বিকাল ৫টা" maxlength="120" />
+                </label>
+                <div class="form-actions">
+                  <button id="batchSubmitBtn" class="primary-btn" type="submit">ব্যাচ খোলো</button>
+                  <button id="batchCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
+                </div>
+              </form>
+
+              <section class="panel table-panel">
+                <div class="panel-header"><h3>ব্যাচগুলো</h3></div>
+                <div id="batchCards" class="batch-grid"></div>
+              </section>
+            </div>
+          </section>
+
+          <section id="courses" class="view">
+            <div class="work-grid">
+              <form id="courseForm" class="panel form-panel">
+                <div class="panel-header"><h3 id="courseFormTitle">নতুন কোর্স / প্যাকেজ</h3></div>
+                <label>
+                  নাম *
+                  <input id="courseName" type="text" placeholder="যেমন: এইচএসসি ফিজিক্স" required maxlength="100" />
+                </label>
+                <label>
+                  ধরন
+                  <select id="courseType">
+                    <option value="subject">আলাদা সাবজেক্ট</option>
+                    <option value="package">প্যাকেজ</option>
+                  </select>
+                </label>
+                <label>
+                  ফি (টাকা)
+                  <input id="courseFee" type="number" min="0" step="100" placeholder="2000" />
+                </label>
+                <label>
+                  মেয়াদ / বিবরণ
+                  <input id="courseDuration" type="text" placeholder="যেমন: ৩ মাস, সপ্তাহে ৩ দিন" maxlength="140" />
+                </label>
+                <div class="form-actions">
+                  <button id="courseSubmitBtn" class="primary-btn" type="submit">যোগ করো</button>
+                  <button id="courseCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
+                </div>
+              </form>
+
+              <section class="panel table-panel">
+                <div class="panel-header">
+                  <h3>সব কোর্স ও প্যাকেজ</h3>
+                  <select id="courseFilter">
+                    <option value="all">সব</option>
+                    <option value="subject">শুধু সাবজেক্ট</option>
+                    <option value="package">শুধু প্যাকেজ</option>
+                  </select>
+                </div>
+                <div id="courseCards" class="batch-grid"></div>
+              </section>
+            </div>
+          </section>
+
+          <section id="attendance" class="view">
+            <section class="panel">
+              <div class="panel-header attendance-tools">
+                <h3>হাজিরা নাও</h3>
+                <div class="inline-tools">
+                  <input id="attendanceDate" type="date" />
+                  <select id="attendanceBatch"></select>
+                </div>
+              </div>
+              <div id="attendanceActions" class="attendance-actions">
+                <button id="markAllPresentBtn" class="secondary-btn" type="button">সবাই উপস্থিত</button>
+                <button id="clearDayBtn" class="secondary-btn" type="button">দিনের হাজিরা মুছো</button>
+              </div>
+              <div id="attendanceList" class="attendance-list"></div>
+            </section>
+          </section>
+
+          <section id="fees" class="view">
+            <section class="panel table-panel">
+              <div class="panel-header">
+                <h3>ফি-এর হিসাব</h3>
+                <select id="feeFilter">
+                  <option value="all">সকল শিক্ষার্থী</option>
+                  <option value="due">শুধু বকেয়া</option>
+                  <option value="paid">শুধু পরিশোধ</option>
+                </select>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>শিক্ষার্থী</th>
+                      <th>ব্যাচ</th>
+                      <th>মাসিক ফি</th>
+                      <th>দিয়েছে</th>
+                      <th>বকেয়া</th>
+                      <th class="col-action">অ্যাকশন</th>
+                    </tr>
+                  </thead>
+                  <tbody id="feeRows"></tbody>
+                </table>
+              </div>
+            </section>
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3>শেষ পেমেন্টগুলো</h3></div>
+              <div id="paymentHistory" class="compact-list"></div>
+            </section>
+          </section>
+
+          <section id="money" class="view">
+            <div class="metric-grid">
+              <article class="metric"><span>মোট আয়</span><strong id="metricIncome">৳0</strong></article>
+              <article class="metric"><span>মোট খরচ</span><strong id="metricCost">৳0</strong></article>
+              <article class="metric"><span>ব্যালেন্স</span><strong id="metricBalance">৳0</strong></article>
+              <article class="metric"><span>এই মাসে নিট</span><strong id="metricMonthNet">৳0</strong></article>
+            </div>
+            <div class="work-grid work-gap">
+              <form id="moneyForm" class="panel form-panel">
+                <div class="panel-header"><h3>নতুন এন্ট্রি</h3></div>
+                <label>
+                  তারিখ
+                  <input id="moneyDate" type="date" required />
+                </label>
+                <label>
+                  ধরন
+                  <select id="moneyType">
+                    <option value="income">আয়</option>
+                    <option value="expense">খরচ</option>
+                  </select>
+                </label>
+                <label>
+                  ক্যাটাগরি
+                  <input id="moneyCategory" type="text" placeholder="যেমন: ভর্তি ফি, ভাড়া, বেতন" maxlength="60" />
+                </label>
+                <label>
+                  টাকার পরিমাণ *
+                  <input id="moneyAmount" type="number" min="1" step="1" placeholder="5000" required />
+                </label>
+                <label>
+                  নোট
+                  <input id="moneyNote" type="text" placeholder="ইচ্ছা করলে নোট লিখো" maxlength="140" />
+                </label>
+                <button class="primary-btn" type="submit">এন্ট্রি সেভ করো</button>
+              </form>
+              <section class="panel table-panel">
+                <div class="panel-header">
+                  <h3>আয় ও খরচ</h3>
+                  <select id="moneyFilter">
+                    <option value="all">সব</option>
+                    <option value="income">শুধু আয়</option>
+                    <option value="expense">শুধু খরচ</option>
+                  </select>
+                </div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>তারিখ</th>
+                        <th>ধরন</th>
+                        <th>ক্যাটাগরি</th>
+                        <th>টাকা</th>
+                        <th class="col-action">অ্যাকশন</th>
+                      </tr>
+                    </thead>
+                    <tbody id="moneyRows"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="users" class="view">
+            <div class="work-grid">
+              <form id="userForm" class="panel form-panel">
+                <div class="panel-header"><h3 id="userFormTitle">নতুন ইউজার</h3></div>
+                <label>
+                  ইউজারনেম *
+                  <input id="userName" type="text" placeholder="যেমন: editor1" required maxlength="40" />
+                </label>
+                <label>
+                  পাসওয়ার্ড *
+                  <input id="userPass" type="text" placeholder="কম হলেও ৪ অক্ষর" required minlength="4" maxlength="60" />
+                </label>
+                <label>
+                  রোল
+                  <select id="userRole">
+                    <option value="editor">এডিটর (যোগ/এডিট, ইউজার ছাড়া)</option>
+                    <option value="viewer">ভিউয়ার (শুধু দেখবে)</option>
+                    <option value="accountant">হিসাবরক্ষক (হিসাব এন্ট্রি)</option>
+                    <option value="student">শিক্ষার্থী (নিজের ব্যাচ)</option>
+                    <option value="admin">অ্যাডমিন (সব ক্ষমতা)</option>
+                  </select>
+                </label>
+                <fieldset class="perm-box">
+                  <legend>কোন কোন পেজ দেখতে পারবে</legend>
+                  <div id="userTabsBox" class="check-grid"></div>
+                </fieldset>
+                <label class="check-line">
+                  <input id="userMoneyEdit" type="checkbox" /> হিসাব পেজে এন্ট্রি দিতে পারবে
+                </label>
+                <label id="linkStudentWrap">
+                  শিক্ষার্থী লিংক করো (শিক্ষার্থী রোলের জন্য)
+                  <select id="userStudent"></select>
+                </label>
+                <div class="form-actions">
+                  <button id="userSubmitBtn" class="primary-btn" type="submit">ইউজার বানাও</button>
+                  <button id="userCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
+                </div>
+              </form>
+
+              <section class="panel table-panel">
+                <div class="panel-header"><h3>ইউজাররা</h3></div>
+                <div class="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ইউজারনেম</th>
+                        <th>রোল</th>
+                        <th>পেজ</th>
+                        <th class="col-action">অ্যাকশন</th>
+                      </tr>
+                    </thead>
+                    <tbody id="userRows"></tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section id="mybatch" class="view">
+            <section class="panel">
+              <div class="panel-header"><h3>আমার ব্যাচ</h3></div>
+              <div id="myBatchCard" class="compact-list"></div>
+            </section>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
