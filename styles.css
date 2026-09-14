@@ -803,7 +803,6 @@ td {
   .mobile-bar {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
     background: #102a2a;
     color: #ffffff;

@@ -62,7 +62,6 @@ const els = {
   adminTools: document.getElementById("adminTools"),
   mainNav: document.getElementById("mainNav"),
   menuToggle: document.getElementById("menuToggle"),
-  mobileLogout: document.getElementById("mobileLogout"),
   sidebar: document.getElementById("sidebar"),
   adminToolsToggle: document.getElementById("adminToolsToggle"),
   adminToolsBody: document.getElementById("adminToolsBody"),
@@ -202,12 +201,6 @@ els.loginForm.addEventListener("submit", (event) => {
 });
 
 els.logoutBtn.addEventListener("click", () => {
-  currentUser = null;
-  setSession(null);
-  showLogin();
-});
-
-els.mobileLogout.addEventListener("click", () => {
   currentUser = null;
   setSession(null);
   showLogin();
