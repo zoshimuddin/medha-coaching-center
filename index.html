@@ -26,7 +26,7 @@
         </label>
         <p id="loginError" class="login-error" hidden></p>
         <button class="primary-btn" type="submit">লগইন করো</button>
-        <p class="login-hint">ডেমো অ্যাডমিন: <b>admin</b> / <b>admin123</b> — লগইন করে ইউজার পেজ থেকে এডিটর / ভিউয়ার / শিক্ষার্থী বানাও।</p>
+        <p class="login-hint">তোমার ইউজারনেম ও পাসওয়ার্ড দিয়ে লগইন করো।</p>
       </form>
     </div>
 
@@ -55,6 +55,7 @@
           <button class="nav-tab" data-view="fees" type="button">ফি</button>
           <button class="nav-tab" data-view="money" type="button">হিসাব</button>
           <button class="nav-tab" data-view="users" type="button">ইউজার</button>
+          <button class="nav-tab" data-view="activity" type="button">হিস্ট্রি</button>
           <button class="nav-tab" data-view="mybatch" type="button">আমার ব্যাচ</button>
         </nav>
         <div class="sidebar-footer">
@@ -412,7 +413,6 @@
                     <option value="viewer">ভিউয়ার (শুধু দেখবে)</option>
                     <option value="accountant">হিসাবরক্ষক (হিসাব এন্ট্রি)</option>
                     <option value="student">শিক্ষার্থী (নিজের ব্যাচ)</option>
-                    <option value="admin">অ্যাডমিন (সব ক্ষমতা)</option>
                   </select>
                 </label>
                 <fieldset class="perm-box">
@@ -455,6 +455,33 @@
             <section class="panel">
               <div class="panel-header"><h3>আমার ব্যাচ</h3></div>
               <div id="myBatchCard" class="compact-list"></div>
+            </section>
+          </section>
+
+          <section id="activity" class="view">
+            <section class="panel table-panel">
+              <div class="panel-header">
+                <h3>ইউজার হিস্ট্রি — কে কী করলো</h3>
+                <div class="inline-tools">
+                  <select id="activityUser">
+                    <option value="all">সব ইউজার</option>
+                  </select>
+                  <input id="activitySearch" class="search-input" type="search" placeholder="খোঁজো" />
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>তারিখ</th>
+                      <th>ইউজার</th>
+                      <th>কাজ</th>
+                      <th>বিবরণ</th>
+                    </tr>
+                  </thead>
+                  <tbody id="activityRows"></tbody>
+                </table>
+              </div>
             </section>
           </section>
         </div>

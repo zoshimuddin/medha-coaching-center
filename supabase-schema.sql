@@ -64,6 +64,16 @@ create table if not exists courses (
   created_at timestamptz default now()
 );
 
+-- Kon user ki korlo (history). App theke auto lekha hobe.
+create table if not exists activity_log (
+  id uuid primary key default gen_random_uuid(),
+  username text not null,
+  action text not null,
+  detail text default '',
+  date date not null default current_date,
+  created_at timestamptz default now()
+);
+
 -- App user + role. id = Supabase auth.users.id (signup er por bosbe).
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -84,6 +94,7 @@ alter table students enable row level security;
 alter table attendance enable row level security;
 alter table payments enable row level security;
 alter table money_entries enable row level security;
+alter table activity_log enable row level security;
 alter table profiles enable row level security;
 
 -- Helper: nijer role dekha
@@ -99,6 +110,7 @@ create policy "authenticated read students" on students for select to authentica
 create policy "authenticated read attendance" on attendance for select to authenticated using (true);
 create policy "authenticated read payments" on payments for select to authenticated using (true);
 create policy "authenticated read money" on money_entries for select to authenticated using (true);
+create policy "read own activity" on activity_log for select to authenticated using (true);
 create policy "read own profile" on profiles for select to authenticated using (id = auth.uid());
 
 -- Write: admin + editor (money te accountant o). App level eo check ache.
@@ -129,6 +141,11 @@ create policy "money write" on money_entries for all to authenticated
   with check (public.my_role() in ('admin', 'accountant') or
          (public.my_role() = 'editor' and exists (
             select 1 from profiles where id = auth.uid() and money_edit = true)));
+
+-- activity: je kono login user likhte parbe (app auto log kore), delete shudhu admin
+create policy "activity write" on activity_log for insert to authenticated with check (true);
+create policy "activity admin delete" on activity_log for delete to authenticated
+  using (public.my_role() = 'admin');
 
 -- profiles: shudhu admin manage korbe (service_role / dashboard theke)
 create policy "admin manage profiles" on profiles for all to authenticated

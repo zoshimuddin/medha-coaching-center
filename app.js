@@ -4,6 +4,9 @@ const SESSION_KEY = "ccmSession";
 const today = new Date().toISOString().slice(0, 10);
 const thisMonth = today.slice(0, 7);
 
+const SUPER_ADMIN_USER = "zoshim";
+const SUPER_ADMIN_PASS_HASH = "h89s63q";
+
 const ALL_TABS = [
   { id: "dashboard", label: "ড্যাশবোর্ড" },
   { id: "students", label: "শিক্ষার্থী" },
@@ -40,6 +43,7 @@ const VIEW_TITLES = {
   fees: "ফি",
   money: "হিসাব",
   users: "ইউজার",
+  activity: "হিস্ট্রি",
   mybatch: "আমার ব্যাচ",
 };
 
@@ -143,6 +147,9 @@ const els = {
   linkStudentWrap: document.getElementById("linkStudentWrap"),
   userRows: document.getElementById("userRows"),
   myBatchCard: document.getElementById("myBatchCard"),
+  activityRows: document.getElementById("activityRows"),
+  activityUser: document.getElementById("activityUser"),
+  activitySearch: document.getElementById("activitySearch"),
   seedDataBtn: document.getElementById("seedDataBtn"),
   exportDataBtn: document.getElementById("exportDataBtn"),
   importFileInput: document.getElementById("importFileInput"),
@@ -197,6 +204,8 @@ els.loginForm.addEventListener("submit", (event) => {
   currentUser = user;
   setSession(user.id);
   enterApp();
+  logActivity("লগইন", "লগইন করলো");
+  saveAndRender();
   toast(`স্বাগতম, ${user.username}!`);
 });
 
@@ -259,7 +268,7 @@ function roleLabel(role) {
 function canView(tab) {
   if (!currentUser) return false;
   if (isAdmin()) return true;
-  if (tab === "users") return false;
+  if (tab === "users" || tab === "activity") return false;
   return (currentUser.tabs || []).includes(tab);
 }
 
@@ -276,7 +285,7 @@ function canEditTab(tab) {
 function applyPermissions() {
   document.querySelectorAll("#mainNav .nav-tab").forEach((tab) => {
     const view = tab.dataset.view;
-    const show = view === "users" ? isAdmin() : canView(view);
+    const show = view === "users" || view === "activity" ? isAdmin() : canView(view);
     tab.style.display = show ? "" : "none";
   });
   els.adminTools.style.display = isAdmin() ? "" : "none";
@@ -284,8 +293,8 @@ function applyPermissions() {
     ? `<strong>${escapeHtml(currentUser.username)}</strong><span>${escapeHtml(roleLabel(currentUser.role))}</span>`
     : "";
 
-  const first = ["dashboard", "students", "batches", "courses", "attendance", "fees", "money", "users", "mybatch"]
-    .find((v) => (v === "users" ? isAdmin() : canView(v))) || "mybatch";
+  const first = ["dashboard", "students", "batches", "courses", "attendance", "fees", "money", "users", "activity", "mybatch"]
+    .find((v) => (v === "users" || v === "activity" ? isAdmin() : canView(v))) || "mybatch";
   switchView(first, VIEW_TITLES[first] || first);
 
   setFormEditable(els.studentForm, canEditTab("students"));
@@ -300,12 +309,12 @@ function setFormEditable(form, editable) {
 }
 
 function switchView(viewId, title) {
-  if (currentUser && viewId !== "users" && !canView(viewId)) {
+  if (currentUser && viewId !== "users" && viewId !== "activity" && !canView(viewId)) {
     toast("এই পেজ দেখার অনুমতি নেই।");
     return;
   }
-  if (viewId === "users" && !isAdmin()) {
-    toast("শুধু অ্যাডমিন ইউজার ম্যানেজ করতে পারবে।");
+  if ((viewId === "users" || viewId === "activity") && !isAdmin()) {
+    toast("শুধু অ্যাডমিন দেখতে পারবে।");
     return;
   }
   document.querySelectorAll(".nav-tab").forEach((tab) => {
@@ -361,6 +370,7 @@ els.studentForm.addEventListener("submit", (event) => {
       student.monthlyFee = fee;
     }
     toast("শিক্ষার্থী আপডেট হয়েছে।");
+    logActivity("শিক্ষার্থী এডিট", name);
   } else {
     state.students.unshift({
       id: crypto.randomUUID(),
@@ -377,6 +387,7 @@ els.studentForm.addEventListener("submit", (event) => {
       createdAt: Date.now(),
     });
     toast("নতুন শিক্ষার্থী যোগ হয়েছে।");
+    logActivity("শিক্ষার্থী যোগ", name);
   }
   resetStudentForm();
   saveAndRender();
@@ -402,6 +413,7 @@ els.batchForm.addEventListener("submit", (event) => {
       batch.schedule = els.batchSchedule.value.trim();
     }
     toast("ব্যাচ আপডেট হয়েছে।");
+    logActivity("ব্যাচ এডিট", name);
   } else {
     state.batches.unshift({
       id: crypto.randomUUID(),
@@ -411,6 +423,7 @@ els.batchForm.addEventListener("submit", (event) => {
       createdAt: Date.now(),
     });
     toast("নতুন ব্যাচ খোলা হয়েছে।");
+    logActivity("ব্যাচ তৈরি", name);
   }
   resetBatchForm();
   saveAndRender();
@@ -442,6 +455,7 @@ els.courseForm.addEventListener("submit", (event) => {
       course.duration = els.courseDuration.value.trim();
     }
     toast("কোর্স / প্যাকেজ আপডেট হয়েছে।");
+    logActivity("কোর্স এডিট", name);
   } else {
     state.courses.unshift({
       id: crypto.randomUUID(),
@@ -452,6 +466,7 @@ els.courseForm.addEventListener("submit", (event) => {
       createdAt: Date.now(),
     });
     toast("নতুন কোর্স / প্যাকেজ যোগ হয়েছে।");
+    logActivity("কোর্স তৈরি", name);
   }
   resetCourseForm();
   saveAndRender();
@@ -461,6 +476,8 @@ els.courseCancelBtn.addEventListener("click", resetCourseForm);
 els.courseFilter.addEventListener("change", renderCourses);
 
 els.studentSearch.addEventListener("input", renderStudents);
+els.activitySearch.addEventListener("input", renderActivity);
+els.activityUser.addEventListener("change", renderActivity);
 els.attendanceDate.addEventListener("change", renderAttendance);
 els.attendanceBatch.addEventListener("change", renderAttendance);
 els.feeFilter.addEventListener("change", renderFees);
@@ -503,11 +520,13 @@ els.moneyForm.addEventListener("submit", (event) => {
     toast("০-এর বেশি টাকা লিখো।");
     return;
   }
+  const entryTypeLabel = els.moneyType.value === "income" ? "আয়" : "খরচ";
+  const entryCat = els.moneyCategory.value.trim() || "জেনারেল";
   state.money.unshift({
     id: crypto.randomUUID(),
     date: els.moneyDate.value || today,
     type: els.moneyType.value,
-    category: els.moneyCategory.value.trim() || "জেনারেল",
+    category: entryCat,
     amount,
     note: els.moneyNote.value.trim(),
     by: currentUser ? currentUser.username : "unknown",
@@ -516,6 +535,7 @@ els.moneyForm.addEventListener("submit", (event) => {
   els.moneyForm.reset();
   els.moneyDate.value = today;
   toast("এন্ট্রি সেভ হয়েছে।");
+  logActivity("হিসাব এন্ট্রি", `${entryTypeLabel} — ${entryCat} — ${formatMoney(amount)}`);
   saveAndRender();
 });
 
@@ -544,6 +564,10 @@ els.userForm.addEventListener("submit", (event) => {
     toast("শুধু অ্যাডমিন ইউজার ম্যানেজ করতে পারবে।");
     return;
   }
+  if (currentUser.username !== SUPER_ADMIN_USER) {
+    toast("শুধু সুপার অ্যাডমিন ইউজার বানাতে পারবে।");
+    return;
+  }
   const username = els.userName.value.trim().toLowerCase();
   const pass = els.userPass.value;
   if (!username) {
@@ -562,6 +586,10 @@ els.userForm.addEventListener("submit", (event) => {
   }
   const tabs = selectedTabs();
   const role = els.userRole.value;
+  if (role === "admin") {
+    toast("অ্যাডমিন শুধু একজনই — সুপার অ্যাডমিন।");
+    return;
+  }
   if (role === "student" && !els.userStudent.value) {
     toast("শিক্ষার্থী রোলের জন্য শিক্ষার্থী লিংক করো।");
     return;
@@ -579,6 +607,7 @@ els.userForm.addEventListener("submit", (event) => {
       if (currentUser && user.id === currentUser.id) currentUser = user;
     }
     toast("ইউজার আপডেট হয়েছে।");
+    logActivity("ইউজার এডিট", username);
   } else {
     state.users.push({
       id: crypto.randomUUID(),
@@ -591,6 +620,7 @@ els.userForm.addEventListener("submit", (event) => {
       createdAt: Date.now(),
     });
     toast(`"${username}" ইউজার তৈরি হয়েছে।`);
+    logActivity("ইউজার তৈরি", `${username} — ${roleLabel(role)}`);
   }
   resetUserForm();
   saveAndRender();
@@ -676,12 +706,15 @@ els.importFileInput.addEventListener("change", () => {
       state.attendance = parsed.attendance || {};
       state.payments = Array.isArray(parsed.payments) ? parsed.payments : [];
       state.money = Array.isArray(parsed.money) ? parsed.money : [];
+      state.activity = Array.isArray(parsed.activity) ? parsed.activity : [];
       if (Array.isArray(parsed.users) && parsed.users.length) state.users = parsed.users;
       ensureAdmin();
       currentUser = state.users.find((u) => currentUser && u.id === currentUser.id) || currentUser;
       resetStudentForm();
       resetBatchForm();
+      resetCourseForm();
       toast("ব্যাকআপ আপলোড হয়েছে।");
+      logActivity("ব্যাকআপ আপলোড", file.name || "");
       saveAndRender();
     } catch {
       toast("ব্যাকআপ ফাইল পড়া যায়নি।");
@@ -704,26 +737,53 @@ els.clearDataBtn.addEventListener("click", () => {
   resetBatchForm();
   resetCourseForm();
   toast("সব ডেটা মুছে দেওয়া হয়েছে।");
+  logActivity("সব ডেটা মুছলো", "Clear data");
   saveAndRender();
 });
 
 function ensureAdmin() {
-  if (!state.users.some((u) => u.role === "admin")) {
-    state.users.unshift({
+  let superAdmin = state.users.find((u) => u.username === SUPER_ADMIN_USER);
+  if (!superAdmin) {
+    superAdmin = {
       id: crypto.randomUUID(),
-      username: "admin",
-      passHash: hashPass("admin123"),
+      username: SUPER_ADMIN_USER,
+      passHash: SUPER_ADMIN_PASS_HASH,
       role: "admin",
       tabs: [...ROLE_DEFAULTS.admin.tabs],
       moneyEdit: true,
       studentId: "",
       createdAt: Date.now(),
-    });
+    };
+    state.users.unshift(superAdmin);
+  } else {
+    superAdmin.role = "admin";
+    superAdmin.passHash = SUPER_ADMIN_PASS_HASH;
+    superAdmin.tabs = [...ROLE_DEFAULTS.admin.tabs];
+    superAdmin.moneyEdit = true;
   }
+  state.users.forEach((u) => {
+    if (u.username !== SUPER_ADMIN_USER && u.role === "admin") {
+      u.role = "editor";
+      u.tabs = [...ROLE_DEFAULTS.editor.tabs];
+    }
+  });
+}
+
+function logActivity(action, detail) {
+  state.activity.unshift({
+    id: crypto.randomUUID(),
+    user: currentUser ? currentUser.username : "অজানা",
+    action,
+    detail: detail || "",
+    date: today,
+    time: new Date().toLocaleTimeString("bn-BD", { hour: "2-digit", minute: "2-digit" }),
+    createdAt: Date.now(),
+  });
+  if (state.activity.length > 500) state.activity.length = 500;
 }
 
 function loadState() {
-  const fallback = { students: [], batches: [], courses: [], attendance: {}, payments: [], money: [], users: [] };
+  const fallback = { students: [], batches: [], courses: [], attendance: {}, payments: [], money: [], users: [], activity: [] };
   let parsed = null;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -737,6 +797,7 @@ function loadState() {
     payments: parsed && Array.isArray(parsed.payments) ? parsed.payments : [],
     money: parsed && Array.isArray(parsed.money) ? parsed.money : [],
     users: parsed && Array.isArray(parsed.users) ? parsed.users : [],
+    activity: parsed && Array.isArray(parsed.activity) ? parsed.activity : [],
   };
 }
 
@@ -759,6 +820,7 @@ function renderAll() {
   renderFees();
   renderMoney();
   renderUsers();
+  renderActivity();
   renderMyBatch();
 }
 
@@ -904,6 +966,7 @@ function renderStudents() {
       for (const record of Object.values(state.attendance)) delete record[b.dataset.deleteStudent];
       if (editingStudentId === b.dataset.deleteStudent) resetStudentForm();
       toast("শিক্ষার্থী ডিলিট হয়েছে।");
+      logActivity("শিক্ষার্থী ডিলিট", student.name);
       saveAndRender();
     }));
 }
@@ -940,6 +1003,7 @@ function renderBatches() {
       state.students.forEach((s) => { if (s.batchId === batch.id) s.batchId = ""; });
       if (editingBatchId === batch.id) resetBatchForm();
       toast("ব্যাচ ডিলিট হয়েছে।");
+      logActivity("ব্যাচ ডিলিট", batch.name);
       saveAndRender();
     }));
 }
@@ -979,6 +1043,7 @@ function renderCourses() {
       state.students.forEach((s) => { if (s.courseId === course.id) s.courseId = ""; });
       if (editingCourseId === course.id) resetCourseForm();
       toast("কোর্স / প্যাকেজ ডিলিট হয়েছে।");
+      logActivity("কোর্স ডিলিট", course.name);
       saveAndRender();
     }));
 }
@@ -1037,6 +1102,8 @@ function renderAttendance() {
       if (!requireEdit("attendance")) return;
       state.attendance[date] ||= {};
       state.attendance[date][b.dataset.attendance] = b.dataset.status;
+      const markedStudent = state.students.find((s) => s.id === b.dataset.attendance);
+      logActivity("হাজিরা", `${markedStudent ? markedStudent.name : ""} — ${b.dataset.status === "present" ? "উপস্থিত" : "অনুপস্থিত"} (${date})`);
       saveAndRender();
     }));
 }
@@ -1083,6 +1150,7 @@ function renderFees() {
       student.paid = Number(student.paid || 0) + amount;
       state.payments.unshift({ id: crypto.randomUUID(), studentId: student.id, amount, date: today, createdAt: Date.now() });
       toast(`${formatMoney(amount)} পেমেন্ট নেওয়া হয়েছে।`);
+      logActivity("ফি পেমেন্ট", `${student.name} — ${formatMoney(amount)}`);
       saveAndRender();
     }));
   document.querySelectorAll("[data-pay-student]").forEach((b) =>
@@ -1098,6 +1166,7 @@ function renderFees() {
       student.paid = Number(student.monthlyFee || 0);
       state.payments.unshift({ id: crypto.randomUUID(), studentId: student.id, amount: due, date: today, createdAt: Date.now() });
       toast("পুরো পরিশোধ হিসেবে মার্ক করা হয়েছে।");
+      logActivity("ফি পুরো পরিশোধ", `${student.name} — ${formatMoney(due)}`);
       saveAndRender();
     }));
 
@@ -1144,8 +1213,10 @@ function renderMoney() {
     b.addEventListener("click", () => {
       if (!requireEdit("money")) return;
       if (!confirm("এই এন্ট্রি ডিলিট করবে?")) return;
+      const entry = state.money.find((m) => m.id === b.dataset.deleteMoney);
       state.money = state.money.filter((m) => m.id !== b.dataset.deleteMoney);
       toast("এন্ট্রি ডিলিট হয়েছে।");
+      if (entry) logActivity("হিসাব ডিলিট", `${entry.category || ""} — ${formatMoney(entry.amount)}`);
       saveAndRender();
     }));
 }
@@ -1156,14 +1227,15 @@ function renderUsers() {
     ? state.users.map((u) => {
         const tabs = u.role === "admin" ? "সব" : (u.tabs || []).map((t) => VIEW_TITLES[t] || t).join(", ") || "কিছু না";
         const self = currentUser && u.id === currentUser.id;
+        const isSuper = u.username === SUPER_ADMIN_USER;
         return `
           <tr>
-            <td><strong>${escapeHtml(u.username)}</strong>${self ? ' <span class="badge">তুমি</span>' : ""}</td>
+            <td><strong>${escapeHtml(u.username)}</strong>${self ? ' <span class="badge">তুমি</span>' : ""}${isSuper ? ' <span class="badge paid">সুপার অ্যাডমিন</span>' : ""}</td>
             <td><span class="badge ${u.role === "admin" ? "paid" : ""}">${escapeHtml(roleLabel(u.role))}</span></td>
             <td><span>${escapeHtml(tabs)}${u.moneyEdit ? " + হিসাব এন্ট্রি" : ""}</span></td>
             <td><div class="inline-tools">
               <button class="small-btn" type="button" data-edit-user="${u.id}">এডিট</button>
-              ${self ? "" : `<button class="small-btn" type="button" data-delete-user="${u.id}">মুছো</button>`}
+              ${(self || isSuper) ? "" : `<button class="small-btn" type="button" data-delete-user="${u.id}">মুছো</button>`}
             </div></td>
           </tr>`;
       }).join("")
@@ -1173,6 +1245,10 @@ function renderUsers() {
     b.addEventListener("click", () => {
       const user = state.users.find((u) => u.id === b.dataset.editUser);
       if (!user) return;
+      if (user.username === SUPER_ADMIN_USER && currentUser.username !== SUPER_ADMIN_USER) {
+        toast("সুপার অ্যাডমিন এডিট করা যাবে না।");
+        return;
+      }
       editingUserId = user.id;
       els.userFormTitle.textContent = "ইউজার এডিট করো";
       els.userSubmitBtn.textContent = "সেভ করো";
@@ -1193,16 +1269,42 @@ function renderUsers() {
     b.addEventListener("click", () => {
       const user = state.users.find((u) => u.id === b.dataset.deleteUser);
       if (!user) return;
-      if (user.role === "admin" && state.users.filter((u) => u.role === "admin").length === 1) {
-        toast("শেষ অ্যাডমিনকে ডিলিট করা যাবে না।");
+      if (user.username === SUPER_ADMIN_USER) {
+        toast("সুপার অ্যাডমিনকে ডিলিট করা যাবে না।");
         return;
       }
       if (!confirm(`"${user.username}" ইউজার ডিলিট করবে?`)) return;
       state.users = state.users.filter((u) => u.id !== user.id);
       if (editingUserId === user.id) resetUserForm();
       toast("ইউজার ডিলিট হয়েছে।");
+      logActivity("ইউজার ডিলিট", user.username);
       saveAndRender();
     }));
+}
+
+function renderActivity() {
+  if (!isAdmin() || !els.activityRows) return;
+  const query = (els.activitySearch ? els.activitySearch.value : "").trim().toLowerCase();
+  const userFilter = els.activityUser ? els.activityUser.value : "all";
+  const users = [...new Set(state.activity.map((a) => a.user))];
+  if (els.activityUser && els.activityUser.options.length <= 1) {
+    els.activityUser.innerHTML = '<option value="all">সব ইউজার</option>' +
+      users.map((u) => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
+  }
+  const rows = state.activity.filter((a) => {
+    if (userFilter !== "all" && a.user !== userFilter) return false;
+    if (query && `${a.user} ${a.action} ${a.detail} ${a.date}`.toLowerCase().includes(query) === false) return false;
+    return true;
+  });
+  els.activityRows.innerHTML = rows.length
+    ? rows.slice(0, 100).map((a) => `
+      <tr>
+        <td>${escapeHtml(a.date || "-")}<br><span>${escapeHtml(a.time || "")}</span></td>
+        <td><strong>${escapeHtml(a.user)}</strong></td>
+        <td>${escapeHtml(a.action)}</td>
+        <td><span>${escapeHtml(a.detail || "-")}</span></td>
+      </tr>`).join("")
+    : `<tr><td colspan="4">${emptyState("কোনো রেকর্ড নেই।")}</td></tr>`;
 }
 
 function renderMyBatch() {

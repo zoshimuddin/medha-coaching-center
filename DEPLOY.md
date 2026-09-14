@@ -1,69 +1,51 @@
-# Live Deploy Guide (Mac + Free hosting)
+# Hostinger Live Guide (Domain + Shared Hosting)
 
-Ekhon app ta browser-only (localStorage). Tomar Mac e full test kora jabe.
-Live multi-user login er jonno 2 ta phase:
+## Sotti kotha (age bujhe nao)
 
-## Phase 1 — Ekhoni live (demo, free, 5 min)
+**Zip upload dile shared live DB hobe NA.** Zip e sudhu 3 ta static file jay
+(`index.html`, `app.js`, `styles.css`) — kono database server chole na.
+Tai ekhon: je browser/device e khulbe, data sekhanei (localStorage) thakbe.
+Sob user er same live data chaile **Supabase** (free) lagbe — niche Phase 2 dekho.
 
-Static hosting e sudhu file upload korlei cholbe. Kintu mone rekho:
-localStorage mane **jei browser e login, data sekhanei** — onno device e
-data share hobe na. Eta demo / single-computer use er jonno OK.
+## Phase 1 — Hostinger e ekhoni live (static)
 
-**Option A: Netlify Drop (sobcheye easy)**
-1. Finder e `coaching-mvp` folder ta zip koro
-2. Edge e `app.netlify.com/drop` kholo, zip ta drag-drop koro
-3. Instant live link pabe (e.g. `coaching-xyz.netlify.app`)
+1. Folder e `hostinger-deploy.zip` ready ache (3 file: index.html, app.js, styles.css).
+2. `hpanel.hostinger.com` > File Manager > `public_html` e dhoko.
+3. Vitorer default file thakle sorাও, zip upload kore **Extract** koro.
+4. Domain e dhoko — site live. Login: tomar super admin account.
+5. Subdomain chaile (jemon `manage.tumar-domain.com`): Domains > Subdomains
+   theke banao, oi folder e zip upload + extract koro.
 
-**Option B: Vercel**
-1. `vercel.com` e signup (GitHub diye free)
-2. Project import > `coaching-mvp` folder select > Deploy
-3. Live link pabe
+## Phase 2 — Shared live database (Supabase, free)
 
-**Mac e local test:**
-```bash
-cd /Users/zoshim/Projects/Website/coaching-mvp
-python3 -m http.server 8000
-# Edge e kholo: http://localhost:8000
-```
+Sob device e same data + sob user er input tumi dekhbe — er jonno:
 
-Demo login: **admin / admin123**
+1. `supabase.com` > New project (free) banao.
+2. SQL Editor > New query > `supabase-schema.sql` er full content paste > Run.
+   (students, batches, courses, attendance, payments, money_entries,
+   activity_log, profiles — sob table + RLS policy toiri hobe.)
+3. Authentication > Users > Add user (tomar email + password), tar `id`
+   copy kore schema file er sesher `insert into profiles ...` query chalao.
+4. Amake bolo "Supabase connect koro" — ami `app.js` e Supabase client bosiye
+   localStorage er bodle live query likhe dibo. `.env.example` e key er format ache.
+5. Tarpor notun zip baniye Hostinger e upload korlei shared live DB cholbe.
 
-## Phase 2 — Real database (Supabase, free tier)
+## Super admin + history (ekhon thekei ache)
 
-Multi-user + sob device e same data lagle Supabase Postgres use koro.
-Sob free tier er moddhe hoy.
+- Super admin ekjonoi. User manage + history shudhu se dekhte parbe.
+- Notun user bananor somoy role list e admin option nei — keu nijeke admin
+  banate parbe na. Purono backup e admin thakle auto editor hoye jabe.
+- **হিস্ট্রি tab:** ke kokhon ki korlo — student add/edit/delete, fee payment,
+  hisab entry/delete, hajira, user create/delete, login — sob record thake.
+  User filter + search ache. Shudhu super admin dekhte pare.
+- History backup/export er sathe save hoy, 500 ta porjonto rakhe.
 
-1. **Project banao:** `supabase.com` > New project (free) > password save koro
-2. **Auth on:** Authentication > Providers > Email on koro
-3. **Schema chalao:** SQL Editor > New query > `supabase-schema.sql` er
-   full content paste > Run
-4. **Admin user:** Authentication > Users > Add user (tomar email+password),
-   tar `id` copy kore schema file er seshe `insert into profiles ...`
-   query ta chalao (ID bosiye)
-5. **App connect:** `.env.example` copy kore `.env` banao, URL + anon key bosao.
-   Tarpor `app.js` e Supabase client add korte hobe (Phase 2 code task —
-   bollei ami kore dibo: localStorage er bodle Supabase query).
-6. **Deploy:** oporer Phase 1 moto Netlify/Vercel e deploy, dashboard e
-   `SUPABASE_URL` ar `SUPABASE_ANON_KEY` environment variable hisebe bosao.
-
-## Database design (short e)
-
-- `profiles` — login user + role + kon tab dekhbe + money edit kina
-- `students` / `batches` — main data (`batch_id` foreign key)
-- `attendance` — (date + student) unique, present/absent
-- `payments` — student fee payment history
-- `money_entries` — income/expense, category, note, ke entry dilo
-- RLS policy: read sob logged-in user, write shudhu role onujayi
-
-## Role plan (app e already ache)
+## Role plan
 
 | Role | Access |
 |---|---|
-| admin | Sob + Users manage + backup |
-| editor | Jegulo tick dibe (add/edit, Users chara) |
+| super admin | Sob + Users manage + backup + history |
+| editor | Jegulo tick dibe (add/edit, Users/history chara) |
 | viewer | Shudhu dekhe, edit pare na |
 | accountant | Money entry + dashboard |
-| student | Shudhu My Batch (name/batch/teacher/time/due) |
-
-Tomar kotha moto: admin Users tab theke user banabe, checkbox diye
-kon page dekhte parbe select korbe, Money edit alada permission.
+| student | Shudhu Amar Batch |
