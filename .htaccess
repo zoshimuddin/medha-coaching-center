@@ -1,0 +1,11 @@
+# Protect dev / database / archive files from public web access.
+# Hostinger's GitHub auto-deploy copies the whole repo into public_html,
+# so we deny direct requests to the non-website files here.
+<FilesMatch "\.(md|sql|zip|ts|example)$">
+  Require all denied
+</FilesMatch>
+
+# Deny any dotfile (.gitignore, .env.example, ...)
+<FilesMatch "^\.">
+  Require all denied
+</FilesMatch>

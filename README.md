@@ -35,7 +35,8 @@ python3 -m http.server 8000
 - `index.html` — markup (login + 10 view)
 - `app.js` — sob logic (auth, permission, history, render)
 - `styles.css` — design (login, chart, drawer menu, responsive)
-- `supabase-schema.sql` — live database schema (Postgres + RLS + activity_log)
+- `supabase/schema.sql` — live database schema (Postgres + RLS + activity_log)
+- `supabase/20261002_coaching_expansion.sql` — expansion migration (billing, schedule, attendance, security)
 - `.env.example` — Supabase keys template
 - `DEPLOY.md` — Hostinger + Supabase live guide
 - `hostinger-deploy.zip` — Hostinger e upload korar zip (regenerate koro change er por)

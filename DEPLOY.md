@@ -1,51 +1,90 @@
-# Hostinger Live Guide (Domain + Shared Hosting)
+# Hostinger Live Guide (Supabase + Domain + Shared Hosting)
 
-## Sotti kotha (age bujhe nao)
+App ekhon **Supabase-connected** — login, data, shob ekjon user er jonno
+same live database e thake. localStorage ar nei.
 
-**Zip upload dile shared live DB hobe NA.** Zip e sudhu 3 ta static file jay
-(`index.html`, `app.js`, `styles.css`) — kono database server chole na.
-Tai ekhon: je browser/device e khulbe, data sekhanei (localStorage) thakbe.
-Sob user er same live data chaile **Supabase** (free) lagbe — niche Phase 2 dekho.
+## 1. Supabase side setup (ekbar)
 
-## Phase 1 — Hostinger e ekhoni live (static)
+1. Supabase project ready (ache) — base `supabase/schema.sql` SQL Editor e
+   already run kora (ache).
+2. **NOTUN EXPANSION SCHEMA RUN KORO** — `supabase/20261002_coaching_expansion.sql`
+   er full content SQL Editor > New query > Run. Eta additive — purano
+   data muche na. Billing (mash onujayi), schedule, class-attendance,
+   teacher pay, bank, settings ar security policies toiri kore.
+   Fresh project hole: age `supabase/schema.sql`, tarpor expansion.
+3. **Authentication > Sign In / Providers > Email > "Confirm email" OFF koro**
+   — nahole app theke notun user banate giye email confirmation ar rate
+   limit e atke jabe.
+4. Tomar nijer admin account: **Authentication > Users > Add user**
+   (tomar email + password, auto confirm).
+5. User list theke tar **UID** copy kore SQL Editor e ei query chalao (1 bar):
 
-1. Folder e `hostinger-deploy.zip` ready ache (3 file: index.html, app.js, styles.css).
-2. `hpanel.hostinger.com` > File Manager > `public_html` e dhoko.
-3. Vitorer default file thakle sorাও, zip upload kore **Extract** koro.
-4. Domain e dhoko — site live. Login: tomar super admin account.
-5. Subdomain chaile (jemon `manage.tumar-domain.com`): Domains > Subdomains
-   theke banao, oi folder e zip upload + extract koro.
+```sql
+insert into profiles (id, username, role, tabs, money_edit)
+values ('PASTE-UID-HERE', 'admin', 'admin',
+  '["dashboard","students","courses","attendance","fees","money"]',
+  true);
+```
 
-## Phase 2 — Shared live database (Supabase, free)
+6. Onno user ra ekhon **Settings > User management** thekei banano jabe
+   (super admin login kore).
 
-Sob device e same data + sob user er input tumi dekhbe — er jonno:
+## 2. Admin-users Edge Function (security kei korbe shokto)
 
-1. `supabase.com` > New project (free) banao.
-2. SQL Editor > New query > `supabase-schema.sql` er full content paste > Run.
-   (students, batches, courses, attendance, payments, money_entries,
-   activity_log, profiles — sob table + RLS policy toiri hobe.)
-3. Authentication > Users > Add user (tomar email + password), tar `id`
-   copy kore schema file er sesher `insert into profiles ...` query chalao.
-4. Amake bolo "Supabase connect koro" — ami `app.js` e Supabase client bosiye
-   localStorage er bodle live query likhe dibo. `.env.example` e key er format ache.
-5. Tarpor notun zip baniye Hostinger e upload korlei shared live DB cholbe.
+User create/delete ekhon server side e hoay bhalo — browser er admin session
+safe thake.
 
-## Super admin + history (ekhon thekei ache)
+1. Supabase dashboard > **Edge Functions** > create function nam dia
+   `admin-users` > `supabase/functions/admin-users/index.ts` er content
+   paste kore **Deploy** koro.
+2. **Edge Functions > Secrets** e add koro:
+   `SUPABASE_SERVICE_ROLE_KEY` = Settings > API theke **service_role** key.
+3. Na korleo cholbe — app e fallback ache (browser signUp), kintu deploy
+   korle nirdorotoki bhalo thakbe.
 
-- Super admin ekjonoi. User manage + history shudhu se dekhte parbe.
-- Notun user bananor somoy role list e admin option nei — keu nijeke admin
-  banate parbe na. Purono backup e admin thakle auto editor hoye jabe.
-- **হিস্ট্রি tab:** ke kokhon ki korlo — student add/edit/delete, fee payment,
-  hisab entry/delete, hajira, user create/delete, login — sob record thake.
-  User filter + search ache. Shudhu super admin dekhte pare.
-- History backup/export er sathe save hoy, 500 ta porjonto rakhe.
+## 3. Hostinger e upload
 
-## Role plan
+1. `hostinger-deploy.zip` ready ache (3 file: index.html, app.js, styles.css —
+   expansion version).
+2. `hpanel.hostinger.com` > File Manager > `public_html`.
+3. Purano 3 file delete koro, zip upload > **Extract**.
+4. Domain e dhoko — login page asbe. Admin email + password diye login.
 
-| Role | Access |
+Subdomain chaile: Domains > Subdomains theke banao, oi folder e zip upload.
+
+## 4. Purano browser data (localStorage backup) niye asha
+
+Age jodi purano version e (browser e) data thako:
+
+1. Purano version khule **Backup download** nao (sidebar > Backup & Demo).
+2. Notun version e login kore **Backup upload** koro — students/courses/
+   batches/enrollments/money/dues live database e chole jabe.
+3. **Joruri:** purano backup er shikder student e year (1st/2nd) ar group
+   nai — import er por students edit kore oi duita field puro koro. Eta
+   chara attendance/schedule e oi shikder kothao dekha jabe na.
+4. Purano payment gulo mash-onujayi allocate kora jay na — import e
+   current mash er invoice er sathe paid hisebe jog hobe.
+
+## Login
+
+- Login hocche **email + password** diye (Supabase Auth).
+- Password bhule gele: login page er "পাসওয়ার্ড ভুলে গেছো?" — email likhe chapo.
+
+## Roles
+
+| Role | Ki dekhbe |
 |---|---|
-| super admin | Sob + Users manage + backup + history |
-| editor | Jegulo tick dibe (add/edit, Users/history chara) |
+| admin | Sob + Settings + History + user manage + teacher pay |
+| editor | Students/courses/hajira/fees (admin section chara) |
 | viewer | Shudhu dekhe, edit pare na |
-| accountant | Money entry + dashboard |
-| student | Shudhu Amar Batch |
+| accountant | Dashboard + hisab (money + bank + dues) entry |
+| teacher | Shudhu assigned class er hajira; student info default luki |
+| student | Dashboard (data na) |
+
+Teacher student field dhekhte hole (phone/whatsapp/guardian/guardian phone/
+address): Settings > User > field grants tick koro.
+
+## Free tier note
+
+Supabase free: 500 MB DB, enough for coaching. 1 mash inactive thakle project
+pause hoy — daily use korle somossa nei.
