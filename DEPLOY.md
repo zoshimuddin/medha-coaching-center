@@ -12,9 +12,12 @@ same live database e thake. localStorage ar nei.
 3. Run `supabase/20261007_student_fees_reports.sql` after the expansion
    migration. It backfills student numbers and admission dates and adds the
    new student, discount, receipt, and payment functions.
-4. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+4. Run `supabase/20261008_reports_ideas_accounts.sql` for the sub-admin role,
+   the ideas board, automatic fee-income posting to Accounts, and the
+   receipt edit/void functions.
+5. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
    off if users should be created without email confirmation.
-5. Create the owner account in **Authentication > Users > Add user** and copy
+6. Create the owner account in **Authentication > Users > Add user** and copy
    its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -27,18 +30,18 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
 6. Onno user ra ekhon **Settings > User management** thekei banano jabe
    (super admin login kore).
 
-## 2. Admin-users Edge Function (security kei korbe shokto)
+## 2. Admin-users Edge Function
 
-User create/delete ekhon server side e hoay bhalo — browser er admin session
-safe thake.
+User creation happens server side so the admin session stays safe. Sub-admin
+and Admin roles can be assigned from **Settings > User management**.
 
-1. Supabase dashboard > **Edge Functions** > create function nam dia
-   `admin-users` > `supabase/functions/admin-users/index.ts` er content
-   paste kore **Deploy** koro.
-2. **Edge Functions > Secrets** e add koro:
-   `SUPABASE_SERVICE_ROLE_KEY` = Settings > API theke **service_role** key.
-3. Na korleo cholbe — app e fallback ache (browser signUp), kintu deploy
-   korle nirdorotoki bhalo thakbe.
+1. Supabase dashboard > **Edge Functions** > create a function named
+   `admin-users` > paste `supabase/functions/admin-users/index.ts` > **Deploy**.
+   Redeploy it whenever this file changes.
+2. Add the secret `SUPABASE_SERVICE_ROLE_KEY` under **Edge Functions > Secrets**
+   (Settings > API > service_role key).
+3. Without the function the app falls back to browser signUp; deploying it is
+   the more secure path.
 
 ## 3. Admission form scanning
 

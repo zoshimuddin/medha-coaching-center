@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Medha Coaching Center Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=4" />
+    <link rel="stylesheet" href="./styles.css?v=5" />
   </head>
   <body>
     <div id="loginView" class="login-wrap" hidden>
@@ -35,9 +35,7 @@
     <div id="appShell" class="app-shell" hidden>
       <header class="mobile-bar">
         <div class="mobile-brand">
-          <img id="brandLogoMobile" class="brand-logo" alt="" hidden />
-          <div id="brandMarkMobile" class="brand-mark">M</div>
-          <strong id="brandNameMobile">Medha Coaching Center</strong>
+          <strong id="brandNameMobile">Medha</strong>
           <span id="mobilePageTitle">Home</span>
         </div>
       </header>
@@ -60,19 +58,7 @@
         <div class="sidebar-footer">
           <div class="user-box">
             <div id="userBadge" class="user-badge"></div>
-            <button id="logoutBtn" class="logout-btn" type="button" data-i18n="logout">লগআউট</button>
-          </div>
-          <div id="adminTools" class="admin-tools">
-            <button id="adminToolsToggle" class="admin-toggle" type="button" aria-expanded="false">
-              <span>Admin tools</span>
-              <span class="admin-chevron">▾</span>
-            </button>
-            <div id="adminToolsBody" class="admin-tools-body" hidden>
-              <button id="exportDataBtn" class="secondary-btn" type="button" data-i18n="backupDown">ব্যাকআপ ডাউনলোড</button>
-              <label class="secondary-btn file-btn" for="importFileInput" data-i18n="backupUp">ব্যাকআপ আপলোড</label>
-              <input id="importFileInput" type="file" accept="application/json" hidden />
-              <button id="clearDataBtn" class="danger-btn" type="button" data-i18n="clearAll">সব ডেটা মুছো</button>
-            </div>
+            <button id="logoutBtn" class="logout-btn" type="button" data-i18n="logout">Logout</button>
           </div>
         </div>
       </aside>
@@ -133,33 +119,22 @@
 
             <div class="dashboard-grid">
               <section class="panel">
-                <div class="panel-header"><h3 data-i18n="studentsPerCourse">কোন কোর্সে কত শিক্ষার্থী</h3></div>
-                <div id="chartCourses" class="bar-chart"></div>
-              </section>
-              <section class="panel">
-                <div class="panel-header"><h3 data-i18n="studentsPerBatch">প্রতি ব্যাচে শিক্ষার্থী</h3></div>
-                <div id="chartBatches" class="bar-chart"></div>
-              </section>
-            </div>
-
-            <div class="dashboard-grid">
-              <section class="panel">
-                <div class="panel-header"><h3 data-i18n="feesCollectedDue">ফি: আদায় বনাম বকেয়া</h3></div>
+                <div class="panel-header"><h3 data-i18n="feesCollectedDue">Fees: Collected vs Due</h3></div>
                 <div id="chartFees" class="bar-chart"></div>
               </section>
               <section class="panel">
-                <div class="panel-header"><h3 data-i18n="recentStudents">নতুন শিক্ষার্থী</h3></div>
-                <div id="recentStudents" class="compact-list"></div>
+                <div class="panel-header"><h3 data-i18n="feeStatus">Fee status</h3></div>
+                <div id="feeSummary" class="compact-list"></div>
               </section>
             </div>
 
             <div class="dashboard-grid">
               <section class="panel">
-                <div class="panel-header"><h3 data-i18n="feeStatus">ফি-এর অবস্থা</h3></div>
-                <div id="feeSummary" class="compact-list"></div>
+                <div class="panel-header"><h3 data-i18n="recentStudents">Recent students</h3></div>
+                <div id="recentStudents" class="compact-list"></div>
               </section>
               <section class="panel">
-                <div class="panel-header"><h3 data-i18n="todayAttendance">আজকের হাজিরা</h3></div>
+                <div class="panel-header"><h3 data-i18n="todayAttendance">Today's attendance</h3></div>
                 <div id="attendanceSummary" class="compact-list"></div>
               </section>
             </div>
@@ -174,16 +149,71 @@
 
           <section id="reports" class="view">
             <section class="report-hero panel">
-              <div class="panel-header"><div><h3>Monthly reports</h3><p id="reportSummaryText">Monthly collection, expenses, and student activity.</p></div><label><span>Report month</span><input id="reportMonth" type="month" /></label></div>
-              <div class="report-overview"><div><span>Accounts net</span><strong id="reportNet">৳0</strong></div><div><span>Collection</span><strong id="reportCollection">৳0</strong></div><div><span>Expenses</span><strong id="reportExpense">৳0</strong></div><div><span>Outstanding due</span><strong id="reportDue">৳0</strong></div></div>
+              <div class="panel-header">
+                <div><h3>Reports</h3><p id="reportSummaryText">Pick a period to see income, expense, fees, and dues.</p></div>
+                <div class="period-picker">
+                  <div class="period-chips" role="group" aria-label="Report period">
+                    <button type="button" data-report-period="day">Day</button>
+                    <button type="button" data-report-period="week">Week</button>
+                    <button type="button" data-report-period="month" class="active">Month</button>
+                  </div>
+                  <input id="reportPeriodDate" type="date" hidden />
+                  <input id="reportPeriodMonth" type="month" />
+                </div>
+              </div>
+              <div class="report-overview">
+                <div><span data-i18n="income">Income</span><strong id="reportIncome">৳0</strong></div>
+                <div><span data-i18n="expense">Expense</span><strong id="reportExpense">৳0</strong></div>
+                <div><span>Net</span><strong id="reportNet">৳0</strong></div>
+                <div><span data-i18n="bankBalance">In bank</span><strong id="reportBankBalance">৳0</strong></div>
+              </div>
             </section>
-            <div class="report-metrics"><article class="panel"><span>Discounts waived</span><strong id="reportDiscount">৳0</strong></article><article class="panel"><span>New students this month</span><strong id="reportNewStudents">0</strong></article><article class="panel"><span>Active / inactive</span><strong id="reportStudentStatus">0 / 0</strong></article></div>
-            <section class="panel panel-gap"><div class="panel-header"><h3>Account activity</h3></div><div id="reportAccounts" class="compact-list"></div></section>
-            <section class="panel panel-gap"><div class="panel-header"><h3>Student activity</h3></div><div id="reportStudents" class="compact-list"></div></section>
+            <div class="report-charts">
+              <article class="panel report-chart-card"><h3>Fee status</h3><div id="chartReportFee" class="donut-wrap"></div></article>
+              <article class="panel report-chart-card"><h3>Income vs expense</h3><div id="chartReportMoney" class="donut-wrap"></div></article>
+              <article class="panel report-chart-card"><h3>Students</h3><div id="chartReportStudents" class="donut-wrap"></div></article>
+            </div>
+            <div class="report-metrics">
+              <article class="panel"><span>Fee collected</span><strong id="reportCollection">৳0</strong></article>
+              <article class="panel"><span>Fee due</span><strong id="reportDue">৳0</strong></article>
+              <article class="panel"><span>Discounts waived</span><strong id="reportDiscount">৳0</strong></article>
+            </div>
+            <section class="panel panel-gap"><div class="panel-header"><h3>Students with due</h3></div><div id="reportStudentDues" class="compact-list"></div></section>
+            <section class="panel panel-gap"><div class="panel-header"><h3>Coaching dues</h3></div><div id="reportDues" class="compact-list"></div></section>
+            <section class="panel panel-gap"><div class="panel-header"><h3>Bank activity</h3></div><div id="reportBank" class="compact-list"></div></section>
+          </section>
+
+          <section id="ideas" class="view">
+            <section class="panel">
+              <div class="panel-header"><h3>Ideas & plans</h3></div>
+              <form id="ideaForm" class="idea-form">
+                <label><span>Name *</span><input id="ideaName" type="text" required maxlength="120" placeholder="Short idea name" /></label>
+                <label><span>Idea / plan *</span><textarea id="ideaBody" rows="3" required maxlength="2000" placeholder="Describe the plan"></textarea></label>
+                <button class="primary-btn" type="submit">Add idea</button>
+              </form>
+            </section>
+            <div id="ideaLabelChips" class="idea-label-chips" role="group" aria-label="Filter by label"></div>
+            <section id="ideaCards" class="idea-cards" aria-live="polite"></section>
           </section>
 
           <section id="more" class="view">
-            <section class="panel"><div class="panel-header"><h3>More sections</h3></div><div id="moreLinks" class="more-links"></div><button id="moreAccountBtn" class="secondary-btn more-account-btn" type="button">Account & tools</button></section>
+            <section class="panel">
+              <div class="panel-header"><h3>Account</h3></div>
+              <div id="accountBox" class="account-box"></div>
+            </section>
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3>More sections</h3></div>
+              <div id="moreLinks" class="more-links"></div>
+            </section>
+            <section class="panel panel-gap" id="adminTools">
+              <button id="adminToolsToggle" class="admin-toggle" type="button" aria-expanded="false"><span>Admin tools</span><span class="admin-chevron">▾</span></button>
+              <div id="adminToolsBody" class="admin-tools-body" hidden>
+                <button id="exportDataBtn" class="secondary-btn" type="button" data-i18n="backupDown">Download backup</button>
+                <label class="secondary-btn file-btn" for="importFileInput" data-i18n="backupUp">Upload backup</label>
+                <input id="importFileInput" type="file" accept="application/json" hidden />
+                <button id="clearDataBtn" class="danger-btn" type="button" data-i18n="clearAll">Clear all data</button>
+              </div>
+            </section>
           </section>
 
           <!-- ============ STUDENTS ============ -->
@@ -208,38 +238,45 @@
               </div>
               <button id="showStudentFormBtn" class="primary-btn" type="button">Add student</button>
             </section>
-            <form id="studentForm" class="panel form-panel student-form" hidden>
-              <div class="panel-header">
-                <h3 id="studentFormTitle">New student</h3>
-                <button id="scanBtn" class="small-btn" type="button">Scan admission form</button>
-                <input id="scanFileInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
-              </div>
-              <p id="studentIdDisplay" class="student-id-display" hidden></p>
-              <label><span>Student name *</span><input id="studentName" type="text" placeholder="e.g. Farhan Ahmed" required maxlength="80" /></label>
-              <div class="form-row">
-                <label><span>Gender</span><select id="studentGender"><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
-                <label><span>Birthday</span><input id="studentBirthday" type="date" /></label>
-              </div>
-              <div class="form-row">
-                <label><span>Admission date *</span><input id="studentAdmissionDate" type="date" required /></label>
-                <label id="studentStatusWrap" hidden><span>Status</span><select id="studentStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
-              </div>
-              <label><span>Mobile number *</span><input id="studentPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" required /></label>
-              <div class="field-with-btn"><label><span>WhatsApp number</span><input id="whatsappNumber" type="tel" placeholder="01XXXXXXXXX" maxlength="15" /></label><button id="waSameBtn" class="small-btn same-btn" type="button" title="Copy mobile number">⇄</button></div>
-              <label><span>Guardian</span><input id="guardianName" type="text" maxlength="80" /></label>
-              <label><span>Guardian mobile</span><input id="guardianPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" /></label>
-              <label><span>Address</span><input id="studentAddress" type="text" maxlength="200" /></label>
-              <label><span>College *</span><select id="studentCollege" required></select></label>
-              <div class="form-row">
-                <label><span>Year *</span><select id="studentYear" required><option value="1st year">1st year</option><option value="2nd year">2nd year</option></select></label>
-                <label><span>Group *</span><select id="studentGroup" required></select></label>
-              </div>
-              <label><span>Batch</span><select id="studentBatch"></select></label>
-              <details class="course-drop"><summary>Courses / packages *</summary><div id="studentCoursesBox" class="course-pick-box"></div></details>
-              <div class="admission-box"><p class="admission-note">Admission fee: <strong id="admissionFeeNote">৳0</strong></p><label><span>Admission fee paid *</span><input id="admissionPaid" type="number" min="0" step="1" required /></label></div>
-              <div class="form-actions"><button id="studentSubmitBtn" class="primary-btn" type="submit">Add student</button><button id="studentCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button></div>
-            </form>
             <section id="studentCards" class="student-cards" aria-live="polite"></section>
+
+            <div id="studentDetailPage" class="page-overlay" hidden>
+              <header class="detail-header">
+                <button id="studentBackBtn" class="detail-back" type="button" aria-label="Back to students">←</button>
+                <h3 id="studentDetailTitle">Student</h3>
+              </header>
+              <form id="studentForm" class="panel form-panel student-form" hidden>
+                <div class="panel-header form-head-row">
+                  <h3 id="studentFormTitle">New student</h3>
+                  <button id="scanBtn" class="small-btn" type="button" data-i18n="scanBtn">Scan admission form</button>
+                  <input id="scanFileInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
+                </div>
+                <p id="studentIdDisplay" class="student-id-display" hidden></p>
+                <label><span>Name *</span><input id="studentName" type="text" placeholder="e.g. Farhan Ahmed" required maxlength="80" /></label>
+                <div class="form-row">
+                  <label><span>Gender</span><select id="studentGender"><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
+                  <label><span>Birthday</span><input id="studentBirthday" type="date" /></label>
+                </div>
+                <div class="form-row">
+                  <label><span>Admission date *</span><input id="studentAdmissionDate" type="date" required /></label>
+                  <label id="studentStatusWrap" hidden><span>Status</span><select id="studentStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+                </div>
+                <label><span>Mobile number *</span><input id="studentPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" required /></label>
+                <div class="field-with-btn"><label><span>WhatsApp number</span><input id="whatsappNumber" type="tel" placeholder="01XXXXXXXXX" maxlength="15" /></label><button id="waSameBtn" class="small-btn same-btn" type="button" title="Copy mobile number">⇄</button></div>
+                <label><span>Guardian</span><input id="guardianName" type="text" maxlength="80" /></label>
+                <label><span>Guardian mobile</span><input id="guardianPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" /></label>
+                <label><span>Address</span><input id="studentAddress" type="text" maxlength="200" /></label>
+                <label><span>College *</span><select id="studentCollege" required></select></label>
+                <div class="form-row">
+                  <label><span>Year *</span><select id="studentYear" required><option value="1st year">1st year</option><option value="2nd year">2nd year</option></select></label>
+                  <label><span>Group *</span><select id="studentGroup" required></select></label>
+                </div>
+                <label><span>Batch</span><select id="studentBatch"></select></label>
+                <details class="course-drop"><summary>Courses / packages *</summary><div id="studentCoursesBox" class="course-pick-box"></div></details>
+                <div class="admission-box"><p class="admission-note">Admission fee: <strong id="admissionFeeNote">৳0</strong></p><label><span>Admission fee paid *</span><input id="admissionPaid" type="number" min="0" step="1" required /></label></div>
+                <div class="form-actions"><button id="studentSubmitBtn" class="primary-btn" type="submit">Add student</button><button id="studentCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button></div>
+              </form>
+            </div>
           </section>
 
           <!-- ============ COURSES & SCHEDULES ============ -->
@@ -285,59 +322,69 @@
               </section>
             </div>
 
-            <section class="panel panel-gap" id="offeringsPanel">
-              <div class="panel-header"><h3 data-i18n="scheduleTitle">সাপ্তাহিক শিডিউল (কোর্স + শ্রেণি + গ্রুপ)</h3></div>
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3 data-i18n="studentsPerCourse">Students per course</h3></div>
+              <div id="chartCourses" class="bar-chart"></div>
+            </section>
+          </section>
+
+          <section id="schedule" class="view">
+            <section class="panel" id="offeringsPanel">
+              <div class="panel-header"><h3 data-i18n="scheduleTitle">Weekly schedule (course + year + group)</h3></div>
               <form id="offeringForm" class="offering-form">
                 <div class="form-row">
                   <label>
-                    <span data-i18n="courseName">কোর্স *</span>
+                    <span data-i18n="courseName">Course *</span>
                     <select id="offeringCourse" required></select>
                   </label>
                   <label>
-                    <span data-i18n="assignTeacher">শিক্ষক</span>
+                    <span data-i18n="assignTeacher">Teacher</span>
                     <select id="offeringTeacher"></select>
                   </label>
                 </div>
                 <div class="form-row">
                   <label>
-                    <span data-i18n="yearLevel">শ্রেণি *</span>
+                    <span data-i18n="yearLevel">Year *</span>
                     <select id="offeringYear" required>
-                      <option value="1st year" data-i18n="year1">১ম বর্ষ</option>
-                      <option value="2nd year" data-i18n="year2">২য় বর্ষ</option>
+                      <option value="1st year" data-i18n="year1">1st year</option>
+                      <option value="2nd year" data-i18n="year2">2nd year</option>
                     </select>
                   </label>
                   <label>
-                    <span data-i18n="groupLabel">গ্রুপ *</span>
+                    <span data-i18n="groupLabel">Group *</span>
                     <select id="offeringGroup" required></select>
                   </label>
                 </div>
                 <label>
-                  <span data-i18n="weekdays">কোন কোন বার ক্লাস হবে *</span>
+                  <span data-i18n="weekdays">Class days *</span>
                   <div id="offeringDaysBox" class="check-grid days-grid"></div>
                 </label>
                 <div class="form-row">
                   <label>
-                    <span data-i18n="classTime">ক্লাসের সময়</span>
+                    <span data-i18n="classTime">Class time</span>
                     <input id="offeringTime" type="time" />
                   </label>
                   <label>
-                    <span data-i18n="ratePerClass">প্রতি ক্লাসে পেমেন্ট (৳)</span>
+                    <span data-i18n="ratePerClass">Pay per class (৳)</span>
                     <input id="offeringRate" type="number" min="0" step="50" placeholder="500" />
                   </label>
                 </div>
                 <div class="form-actions">
-                  <button id="offeringSubmitBtn" class="primary-btn" type="submit" data-i18n="addSchedule">শিডিউল যোগ করো</button>
+                  <button id="offeringSubmitBtn" class="primary-btn" type="submit" data-i18n="addSchedule">Add schedule</button>
                   <button id="offeringCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button>
                 </div>
               </form>
               <div id="offeringsList" class="compact-list panel-gap"></div>
             </section>
-
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3 data-i18n="studentsPerBatch">Students per batch</h3></div>
+              <div id="chartBatches" class="bar-chart"></div>
+            </section>
             <section class="panel panel-gap" id="batchesPanel">
-              <div class="panel-header"><h3 data-i18n="batchList">ব্যাচগুলো</h3></div>
+              <div class="panel-header"><h3 data-i18n="batchList">Batches</h3></div>
               <form id="batchForm" class="chip-add-form">
                 <input id="batchName" type="text" required maxlength="80" placeholder="HSC-Morning-A" />
-                <button class="secondary-btn" type="submit" data-i18n="addBtn">যোগ করো</button>
+                <button class="secondary-btn" type="submit" data-i18n="addBtn">Add</button>
               </form>
               <div id="batchChips" class="chips-box panel-gap"></div>
             </section>
@@ -347,8 +394,17 @@
           <section id="attendance" class="view">
             <section class="panel">
               <div class="panel-header attendance-tools">
-                <h3 data-i18n="takeAttendance">হাজিরা নাও</h3>
-                <input id="attendanceDate" type="date" />
+                <h3 data-i18n="takeAttendance">Attendance</h3>
+                <div class="inline-tools attendance-filters">
+                  <select id="attendanceSubject" aria-label="Subject"></select>
+                  <input id="attendanceDate" type="date" />
+                </div>
+              </div>
+              <p id="attendanceHistoryNote" class="muted-note" hidden>Viewing a past date — saved attendance below.</p>
+              <div id="attendanceYearChips" class="year-chips" role="group" aria-label="Filter by year">
+                <button class="year-chip active" type="button" data-roster-year="all" aria-pressed="true">All years</button>
+                <button class="year-chip" type="button" data-roster-year="1st year" aria-pressed="false">1st year</button>
+                <button class="year-chip" type="button" data-roster-year="2nd year" aria-pressed="false">2nd year</button>
               </div>
               <div id="attendanceClasses" class="class-list"></div>
             </section>
@@ -358,26 +414,23 @@
                 <span id="rosterHeldBadge" class="badge"></span>
               </div>
               <div id="attendanceActions" class="attendance-actions">
-                <button id="markAllPresentBtn" class="secondary-btn" type="button" data-i18n="markAllPresent">সবাই উপস্থিত</button>
-                <button id="saveAttendanceBtn" class="primary-btn" type="button" data-i18n="saveAttendance">হাজিরা সেভ করো</button>
+                <button id="markAllPresentBtn" class="secondary-btn" type="button" data-i18n="markAllPresent">Mark all present</button>
+                <button id="saveAttendanceBtn" class="primary-btn" type="button" data-i18n="saveAttendance">Save attendance</button>
               </div>
               <div id="attendanceRoster" class="attendance-list"></div>
             </section>
           </section>
 
-          <!-- ============ FEES ============ -->
           <section id="fees" class="view">
-            <section class="panel fee-collect-bar">
-              <div class="fee-collect-main">
-                <span class="fee-collect-label" data-i18n="totalCollected">মোট আদায়</span>
-                <strong id="feeCollectTotal">৳0</strong>
-                <span id="feeCollectCount" class="fee-collect-count"></span>
-              </div>
-              <label class="fee-scope-label"><span data-i18n="fMonth">মাস</span><input id="feeMonth" type="month" /></label>
-            </section>
+            <div class="fee-stats-bar">
+              <article><span>Total collection</span><strong id="feeCollectTotal">৳0</strong></article>
+              <article class="stat-today"><span>Today collection</span><strong id="feeTodayCollect">৳0</strong></article>
+              <article class="stat-month"><span>Month collection</span><strong id="feeMonthCollect">৳0</strong></article>
+            </div>
             <section class="panel fee-list-panel panel-gap">
               <div class="panel-header">
                 <h3>Student fees</h3>
+                <label class="fee-scope-label"><span data-i18n="fMonth">Month</span><input id="feeMonth" type="month" /></label>
                 <div class="inline-tools filter-tools">
                   <input id="feeSearch" class="search-input" type="search" placeholder="Search name or student ID" aria-label="Search fee records" />
                   <select id="feeFilter" aria-label="Filter fees"><option value="all">All students</option><option value="due">Due only</option><option value="paid">Paid only</option></select>
@@ -385,77 +438,53 @@
               </div>
               <div id="feeRows" class="fee-student-list" aria-live="polite"></div>
             </section>
-            <section class="panel panel-gap">
-              <div class="panel-header"><h3>Recent collections</h3></div>
-              <div id="paymentHistory" class="compact-list"></div>
-            </section>
+
+            <div id="feeDetailPage" class="page-overlay" hidden>
+              <header class="detail-header">
+                <button id="feeBackBtn" class="detail-back" type="button" aria-label="Back to fees">←</button>
+                <h3 id="feeDetailTitle">Student fee</h3>
+              </header>
+              <div id="feeDetailBody" class="fee-detail-page-body"></div>
+            </div>
           </section>
 
           <!-- ============ ACCOUNTS ============ -->
           <section id="money" class="view">
-            <div class="metric-grid">
-              <article class="metric"><span data-i18n="totalIncome">মোট আয়</span><strong id="metricIncome">৳0</strong></article>
-              <article class="metric"><span data-i18n="totalCost">মোট খরচ</span><strong id="metricCost">৳0</strong></article>
-              <article class="metric"><span data-i18n="balance">ব্যালেন্স</span><strong id="metricBalance">৳0</strong></article>
-              <article class="metric"><span data-i18n="monthNet">মাসের নিট</span><strong id="metricMonthNet">৳0</strong></article>
+            <div class="money-today-grid">
+              <article><span data-i18n="incomeToday">Today income</span><strong id="todayIncomeMoney">৳0</strong></article>
+              <article class="cost"><span data-i18n="expenseToday">Today cost</span><strong id="todayCostMoney">৳0</strong></article>
+              <article class="net"><span data-i18n="netToday">Today net</span><strong id="todayNetMoney">৳0</strong></article>
             </div>
-            <div class="work-grid work-gap">
-              <form id="moneyForm" class="panel form-panel">
-                <div class="panel-header"><h3 data-i18n="newEntry">নতুন এন্ট্রি</h3></div>
+            <div class="money-balance-bar panel">
+              <div>
+                <span data-i18n="bankBalance">In bank</span>
+                <strong id="moneyBalanceToday">৳0</strong>
+              </div>
+              <p class="muted-note">Deposits add to the balance and withdrawals subtract — both flow into Reports.</p>
+            </div>
+            <section class="panel form-panel money-entry-panel">
+              <form id="moneyForm">
+                <div class="panel-header"><h3 data-i18n="newEntry">New entry</h3></div>
+                <div class="entry-type-toggle" role="group" aria-label="Entry type">
+                  <button type="button" data-entry-type="income" class="active">Income</button>
+                  <button type="button" data-entry-type="expense">Expense</button>
+                </div>
+                <input id="moneyType" type="hidden" value="income" />
                 <label>
-                  <span data-i18n="entryDate">তারিখ</span>
+                  <span data-i18n="entryDate">Date</span>
                   <input id="moneyDate" type="date" required />
                 </label>
                 <label>
-                  <span data-i18n="entryType">ধরন</span>
-                  <select id="moneyType">
-                    <option value="income" data-i18n="income">আয়</option>
-                    <option value="expense" data-i18n="expense">খরচ</option>
-                  </select>
+                  <span data-i18n="category">Category</span>
+                  <input id="moneyCategory" type="text" maxlength="60" placeholder="e.g. Electricity bill" />
                 </label>
                 <label>
-                  <span data-i18n="category">ক্যাটাগরি</span>
-                  <input id="moneyCategory" type="text" maxlength="60" />
-                </label>
-                <label>
-                  <span data-i18n="amount">টাকার পরিমাণ *</span>
+                  <span data-i18n="amount">Amount *</span>
                   <input id="moneyAmount" type="number" min="1" step="1" placeholder="5000" required />
                 </label>
-                <label>
-                  <span data-i18n="note">নোট</span>
-                  <input id="moneyNote" type="text" maxlength="140" />
-                </label>
-                <button class="primary-btn" type="submit" data-i18n="saveEntry">এন্ট্রি সেভ করো</button>
+                <button class="primary-btn" type="submit" data-i18n="saveEntry">Save entry</button>
               </form>
-              <section class="panel table-panel">
-                <div class="panel-header">
-                  <h3 data-i18n="incomeCost">আয় ও খরচ</h3>
-                  <div class="inline-tools filter-tools">
-                    <input id="moneyMonth" type="month" />
-                    <input id="moneyDay" type="date" />
-                    <select id="moneyFilter">
-                      <option value="all" data-i18n="fAll">সব</option>
-                      <option value="income" data-i18n="onlyIncome">শুধু আয়</option>
-                      <option value="expense" data-i18n="onlyExpense">শুধু খরচ</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th data-i18n="thDate">তারিখ</th>
-                        <th data-i18n="thType">ধরন</th>
-                        <th data-i18n="thCategory">ক্যাটাগরি</th>
-                        <th data-i18n="thAmount">টাকা</th>
-                        <th class="col-action" data-i18n="thAction">অ্যাকশন</th>
-                      </tr>
-                    </thead>
-                    <tbody id="moneyRows"></tbody>
-                  </table>
-                </div>
-              </section>
-            </div>
+            </section>
 
             <section class="panel panel-gap">
               <div class="panel-header">
@@ -566,18 +595,10 @@
               <div class="panel-header"><h3 data-i18n="brandingTitle">ব্র্যান্ডিং</h3></div>
               <form id="brandingForm" class="branding-form">
                 <label>
-                  <span data-i18n="coachingName">কোচিংর নাম *</span>
+                  <span data-i18n="coachingName">Coaching name *</span>
                   <input id="setName" type="text" required maxlength="80" />
                 </label>
-                <label>
-                  <span data-i18n="logoLabel">লোগো</span>
-                  <input id="setLogo" type="file" accept="image/png,image/jpeg,image/webp" />
-                </label>
-                <div class="logo-preview-row">
-                  <img id="logoPreview" class="brand-logo" alt="" hidden />
-                  <button id="removeLogoBtn" class="secondary-btn" type="button" data-i18n="removeLogo" hidden>লোগো মুছো</button>
-                </div>
-                <button class="primary-btn" type="submit" data-i18n="saveSettings">সেটিংস সেভ করো</button>
+                <button class="primary-btn" type="submit" data-i18n="saveSettings">Save settings</button>
               </form>
             </section>
 
@@ -630,11 +651,13 @@
                 <label>
                   <span data-i18n="role">রোল</span>
                   <select id="userRole">
-                    <option value="editor" data-i18n="role_editor">এডিটর (যোগ/এডিট, ইউজার ছাড়া)</option>
-                    <option value="viewer" data-i18n="role_viewer">ভিউয়ার (শুধু দেখবে)</option>
-                    <option value="accountant" data-i18n="role_accountant">হিসাবরক্ষক (হিসাব এন্ট্রি)</option>
-                    <option value="teacher" data-i18n="role_teacher">শিক্ষক (শুধু হাজিরা নেবে)</option>
-                    <option value="student" data-i18n="role_student">শিক্ষার্থী (ড্যাশবোর্ড দেখবে)</option>
+                    <option value="admin" data-i18n="role_admin">Admin (everything)</option>
+                    <option value="subadmin" data-i18n="role_subadmin">Sub admin (everything, no users)</option>
+                    <option value="editor" data-i18n="role_editor">Editor (add/edit, no users)</option>
+                    <option value="viewer" data-i18n="role_viewer">Viewer (view only)</option>
+                    <option value="accountant" data-i18n="role_accountant">Accountant (money entry)</option>
+                    <option value="teacher" data-i18n="role_teacher">Teacher (attendance only)</option>
+                    <option value="student" data-i18n="role_student">Student (dashboard only)</option>
                   </select>
                 </label>
                 <fieldset class="perm-box">
@@ -707,10 +730,6 @@
       </main>
     </div>
 
-    <dialog id="feeDetailDialog" class="app-dialog fee-detail-dialog" aria-labelledby="feeDetailTitle">
-      <div class="dialog-heading"><h2 id="feeDetailTitle">Student fee detail</h2><button id="closeFeeDetail" class="secondary-btn" type="button">Close</button></div>
-      <div id="feeDetailBody"></div>
-    </dialog>
     <dialog id="discountConfirmDialog" class="app-dialog confirm-dialog" aria-labelledby="discountConfirmTitle">
       <h2 id="discountConfirmTitle">Apply discount?</h2><p id="discountConfirmText"></p>
       <div class="form-actions"><button id="confirmDiscountBtn" class="primary-btn" type="button">Apply discount</button><button id="cancelDiscountBtn" class="secondary-btn" type="button">Cancel</button></div>
@@ -721,16 +740,16 @@
       <div class="form-actions receipt-actions"><button id="printReceiptBtn" class="primary-btn" type="button">Print</button></div>
     </dialog>
     <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Primary navigation">
-      <button type="button" data-view="dashboard"><span aria-hidden="true">⌂</span><span>Home</span></button>
-      <button type="button" data-view="reminders"><span aria-hidden="true">♧</span><span>Reminder</span></button>
-      <button type="button" data-view="students"><span aria-hidden="true">♙</span><span>Students</span></button>
-      <button type="button" data-view="fees"><span aria-hidden="true">৳</span><span>Fees</span></button>
-      <button type="button" data-view="more"><span aria-hidden="true">•••</span><span>More</span></button>
+      <button type="button" data-view="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/></svg><span>Home</span></button>
+      <button type="button" data-view="reminders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><span>Reminder</span></button>
+      <button type="button" data-view="students"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Students</span></button>
+      <button type="button" data-view="fees"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Fees</span></button>
+      <button type="button" data-view="more"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg><span>More</span></button>
     </nav>
     <div id="bootOverlay" class="boot-overlay" hidden><span data-i18n="loading">Loading…</span></div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="./app.js?v=5"></script>
+    <script src="./app.js?v=6"></script>
   </body>
 </html>

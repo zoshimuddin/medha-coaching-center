@@ -23,6 +23,8 @@ const I18N = {
     m_settings: "Settings", m_activity: "History",
     logout: "Logout",
     backupDown: "Download backup", backupUp: "Upload backup", clearAll: "Clear all data",
+    incomeToday: "Today income", expenseToday: "Today cost", netToday: "Today net",
+    role_admin: "Admin (everything)", role_subadmin: "Sub admin (everything, no users)",
     eyebrow: "Coaching workspace", todayDate: "Today's date",
     totalStudents: "Total Students", activeBatches: "Active Batches", presentToday: "Present Today",
     dueFees: "Due Fees", studentsPerCourse: "Students per Course",
@@ -98,7 +100,7 @@ const STR = {
     present: "Present", absent: "Absent", notMarked: "Not marked",
     paid: "Paid", due: "Due", collected: "Collected", held: "Held", scheduled: "Scheduled",
     subject: "Subject", pack: "Package", you: "you", superAdmin: "Super Admin",
-    roleAdmin: "Admin", roleEditor: "Editor", roleViewer: "Viewer",
+    roleAdmin: "Admin", roleSubadmin: "Sub Admin", roleEditor: "Editor", roleViewer: "Viewer",
     roleAccountant: "Accountant", roleStudent: "Student", roleTeacher: "Teacher",
     tabsAll: "All", tabsNone: "None", plusMoneyEdit: " + money entry",
     studentsSuffix: "students", enrolledSuffix: "enrolled",
@@ -188,7 +190,7 @@ function toNum(value) { return Number(value || 0).toLocaleString("en-US"); }
 function formatMoney(value) { return `৳${Number(value || 0).toLocaleString("en-US")}`; }
 
 function roleLabel(role) {
-  return { admin: t("roleAdmin"), editor: t("roleEditor"), viewer: t("roleViewer"), accountant: t("roleAccountant"), student: t("roleStudent"), teacher: t("roleTeacher") }[role] || role;
+  return { admin: t("roleAdmin"), subadmin: t("roleSubadmin"), editor: t("roleEditor"), viewer: t("roleViewer"), accountant: t("roleAccountant"), student: t("roleStudent"), teacher: t("roleTeacher") }[role] || role;
 }
 
 function yearLabel(year) {
@@ -218,6 +220,7 @@ const ALL_TABS = [
 
 const ROLE_DEFAULTS = {
   admin: { tabs: ["dashboard", "students", "courses", "attendance", "fees", "money"], moneyEdit: true },
+  subadmin: { tabs: ["dashboard", "students", "courses", "attendance", "fees", "money"], moneyEdit: true },
   editor: { tabs: ["dashboard", "students", "courses", "attendance", "fees"], moneyEdit: false },
   viewer: { tabs: ["dashboard", "students", "courses", "attendance", "fees", "money"], moneyEdit: false },
   accountant: { tabs: ["dashboard", "money"], moneyEdit: true },
@@ -225,14 +228,15 @@ const ROLE_DEFAULTS = {
   student: { tabs: ["dashboard"], moneyEdit: false },
 };
 
-const VIEW_ORDER = ["dashboard", "students", "courses", "attendance", "fees", "money", "payroll", "reports", "settings", "activity"];
-const MORE_VIEWS = ["reports", "courses", "attendance", "money", "payroll", "settings", "activity"];
+const VIEW_ORDER = ["dashboard", "reminders", "students", "fees", "more", "courses", "schedule", "attendance", "money", "payroll", "reports", "settings", "activity", "ideas"];
+const MORE_VIEWS = ["reports", "ideas", "schedule", "courses", "attendance", "money", "payroll", "settings", "activity"];
 
 function viewTitle(id) {
   const map = {
     dashboard: tr("m_dashboard"), students: tr("m_students"), courses: tr("m_courses"),
     attendance: tr("m_attendance"), fees: tr("m_fees"), money: tr("m_money"),
-    payroll: tr("m_payroll"), reports: "Reports", reminders: "Reminder", more: "More", settings: tr("m_settings"), activity: tr("m_activity"),
+    payroll: tr("m_payroll"), reports: "Reports", reminders: "Reminder", more: "More",
+    schedule: "Schedule", ideas: "Ideas & plans", settings: tr("m_settings"), activity: tr("m_activity"),
   };
   return map[id] || id;
 }
@@ -252,6 +256,7 @@ const state = {
   bank: { opening: 0 }, bankTx: [],
   teacherPayments: [], heldSessions: [],
   users: [], activity: [], feePayments: [], feeDiscounts: [],
+  ideas: [], offeringCounts: {},
 };
 let editingStudentId = null;
 let editingCourseId = null;
@@ -260,6 +265,15 @@ let editingUserId = null;
 let currentUser = null;
 let activeSession = { offering: null, sessionId: null, marks: new Map() };
 let logoPicked = null;
+let studentStatusFilter = "active";
+let attendanceSubjectId = "";
+let attendanceYear = "all";
+let editingReceiptId = null;
+let currentFeeStudentId = null;
+let lastReceipt = null;
+let pendingDiscount = null;
+let ideaFilter = "All";
+let reportPeriod = "month";
 
 const els = {};
 for (const el of document.querySelectorAll("[id]")) els[el.id] = el;
@@ -275,7 +289,8 @@ els.moneyDate.value = today;
 els.dueDate.value = today;
 els.bankDate.value = today;
 els.feeMonth.value = thisMonth;
-els.reportMonth.value = thisMonth;
+els.reportPeriodMonth.value = thisMonth;
+els.reportPeriodDate.value = today;
 
 /* ================= helpers ================= */
 
@@ -362,6 +377,7 @@ const db = {
       classTime: r.class_time || "", rate: Number(r.rate_per_class || 0),
       active: r.active !== false, createdAt: Date.parse(r.created_at),
     }));
+    state.offeringCounts = {};
   },
 
   async loadStudents() {
@@ -439,9 +455,9 @@ const db = {
   },
 
   async loadAdmin() {
-    if (!isAdmin()) { state.users = []; state.activity = []; return; }
+    if (!isManager()) { state.users = []; state.activity = []; return; }
     const [users, activity] = await Promise.all([
-      safe(sb.from("profiles").select("*").order("created_at", { ascending: true })),
+      isAdmin() ? safe(sb.from("profiles").select("*").order("created_at", { ascending: true })) : Promise.resolve([]),
       safe(sb.from("activity_log").select("*").order("created_at", { ascending: false }).limit(500)),
     ]);
     state.users = (users || []).map((r) => ({
@@ -458,9 +474,17 @@ const db = {
     }));
   },
 
+  async loadIdeas() {
+    const data = await safe(sb.from("ideas").select("*, profiles(username)").order("created_at", { ascending: false }).limit(200));
+    state.ideas = (data || []).map((r) => ({
+      id: r.id, title: r.title || "", idea: r.idea || "", label: r.label || "New",
+      createdBy: r.profiles?.username || "", createdAt: Date.parse(r.created_at),
+    }));
+  },
+
   async loadAll() {
     await db.loadCore();
-    await Promise.all([db.loadStudents(), db.loadFinance(), db.loadPayroll(), db.loadAdmin()]);
+    await Promise.all([db.loadStudents(), db.loadFinance(), db.loadPayroll(), db.loadAdmin(), db.loadIdeas()]);
   },
 };
 
@@ -515,11 +539,13 @@ els.loginForm.addEventListener("submit", async (event) => {
   }
 });
 
-els.logoutBtn.addEventListener("click", async () => {
+async function doLogout() {
   await sb.auth.signOut();
   currentUser = null;
   showLogin();
-});
+}
+
+els.logoutBtn.addEventListener("click", doLogout);
 
 els.forgotBtn.addEventListener("click", async () => {
   const email = els.loginEmail.value.trim();
@@ -569,34 +595,36 @@ function enterApp() {
   if (canView("fees")) refreshFees();
 }
 
-function isAdmin() { return currentUser && currentUser.role === "admin"; }
-function hasPayrollAccess() { return isAdmin() || !!(currentUser && currentUser.payrollAccess); }
+function isAdmin() { return !!(currentUser && currentUser.role === "admin"); }
+function isSubAdmin() { return !!(currentUser && currentUser.role === "subadmin"); }
+function isManager() { return isAdmin() || isSubAdmin(); }
+function hasPayrollAccess() { return isManager() || !!(currentUser && currentUser.payrollAccess); }
 
 function canView(tab) {
   if (!currentUser) return false;
-  if (tab === "settings" || tab === "activity" || tab === "reports") return isAdmin();
-  if (tab === "reminders") return isAdmin() || (currentUser.tabs || []).includes("students");
-  if (tab === "more") return true;
+  if (tab === "settings" || tab === "activity" || tab === "reports") return isManager();
+  if (tab === "reminders") return isManager() || (currentUser.tabs || []).includes("students");
+  if (tab === "ideas" || tab === "more") return true;
   if (tab === "payroll") return hasPayrollAccess();
-  if (isAdmin()) return true;
+  if (isManager()) return true;
   return (currentUser.tabs || []).includes(tab);
 }
 
 function canEditTab(tab) {
   if (!currentUser) return false;
-  if (isAdmin()) return true;
+  if (isManager()) return true;
   if (["viewer", "student", "teacher"].includes(currentUser.role)) return false;
   if (tab === "money") return !!currentUser.moneyEdit;
   return (currentUser.tabs || []).includes(tab);
 }
 
 function myOfferings() {
-  if (isAdmin()) return state.offerings;
+  if (isManager()) return state.offerings;
   return state.offerings.filter((o) => o.teacherId === currentUser?.id);
 }
 
 function canMarkOffering(offering) {
-  return !!(currentUser && offering && (isAdmin() || offering.teacherId === currentUser.id));
+  return !!(currentUser && offering && (isManager() || offering.teacherId === currentUser.id));
 }
 
 function applyPermissions() {
@@ -612,13 +640,13 @@ function applyPermissions() {
   els.studentForm.hidden = true;
   els.showStudentFormBtn.hidden = !canEditTab("students");
   setFormEditable(els.courseForm, canEditTab("courses"));
-  setFormEditable(els.offeringForm, isAdmin());
-  setFormEditable(els.batchForm, isAdmin());
+  setFormEditable(els.offeringForm, isManager());
+  setFormEditable(els.batchForm, isManager());
   setFormEditable(els.moneyForm, canEditTab("money"));
   setFormEditable(els.dueForm, canEditTab("money"));
   setFormEditable(els.bankForm, canEditTab("money"));
-  els.bankOpeningBox.style.display = isAdmin() ? "" : "none";
-  els.payPayPanel.style.display = isAdmin() ? "" : "none";
+  els.bankOpeningBox.style.display = isManager() ? "" : "none";
+  els.payPayPanel.style.display = isManager() ? "" : "none";
   els.usersSection.style.display = isAdmin() ? "" : "none";
 }
 
@@ -650,11 +678,6 @@ document.querySelectorAll(".nav-tab, #mobileBottomNav button").forEach((tab) => 
 });
 
 document.querySelectorAll("[data-home-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.homeView, viewTitle(button.dataset.homeView))));
-els.moreAccountBtn.addEventListener("click", () => {
-  if (isMobileMenu()) openSidebar();
-  else if (isAdmin()) switchView("settings", viewTitle("settings"));
-  else toast("Your account controls are available from the sidebar.");
-});
 
 document.querySelectorAll(".metric[data-goto]").forEach((card) => {
   const go = () => {
@@ -675,15 +698,15 @@ function requireEdit(tab) {
 /* ================= branding ================= */
 
 function applyBrand() {
-  const name = state.settings.coachingName || STR.bn.appName;
+  const name = state.settings.coachingName || "Medha Coaching Center";
+  const shortName = name.trim().split(/\s+/)[0] || "Medha";
   const logo = state.settings.logoData || "";
   els.brandName.textContent = name;
-  els.brandNameMobile.textContent = name;
+  els.brandNameMobile.textContent = shortName;
   els.loginBrandName.textContent = name;
   document.title = `${name} Manager`;
   for (const [img, mark] of [
     [els.brandLogo, els.brandMark],
-    [els.brandLogoMobile, els.brandMarkMobile],
     [els.loginLogo, els.loginMark],
   ]) {
     if (logo) {
@@ -964,15 +987,16 @@ els.studentForm.addEventListener("submit", async (event) => {
 });
 
 els.studentCancelBtn.addEventListener("click", resetStudentForm);
+els.studentBackBtn.addEventListener("click", resetStudentForm);
 els.showStudentFormBtn.addEventListener("click", () => {
   if (!requireEdit("students")) return;
   resetStudentForm();
+  els.studentDetailPage.hidden = false;
+  els.studentDetailTitle.textContent = "New student";
   els.studentForm.hidden = false;
-  els.showStudentFormBtn.hidden = true;
   els.studentName.focus();
 });
 
-let studentStatusFilter = "active";
 document.querySelectorAll("[data-student-status]").forEach((button) => {
   button.addEventListener("click", () => {
     studentStatusFilter = button.dataset.studentStatus;
@@ -990,6 +1014,14 @@ function studentMatches(s, query) {
   const hay = [s.name, s.studentNumber, s.phone, s.guardianPhone, s.whatsapp, s.college].join(" ").toLowerCase();
   return query.split(/\s+/).filter(Boolean).every((part) => hay.includes(part));
 }
+
+const SVG_ICONS = {
+  chat: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.5L3 21l2-5.4A8.5 8.5 0 1 1 21 11.5z"/></svg>`,
+  call: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.7a2 2 0 0 1-.5 2.1L8 9.7a16 16 0 0 0 6 6l1.2-1.2a2 2 0 0 1 2.1-.5c.9.3 1.8.5 2.7.6a2 2 0 0 1 1.9 2z"/></svg>`,
+  family: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
+};
 
 function renderStudents() {
   const editable = canEditTab("students");
@@ -1018,20 +1050,45 @@ function renderStudents() {
     return studentMatches(s, query);
   });
   els.studentCards.innerHTML = students.length
-    ? students.map((s) => `
-      <article class="student-card">
+    ? students.map((s) => {
+        const nameClass = s.name.length > 22 ? " long-name" : "";
+        const waNumber = (s.whatsapp || "").replace(/\D/g, "");
+        return `
+      <article class="student-card${editable ? " clickable" : ""}"${editable ? ` data-student-card="${s.id}" tabindex="0" role="button" aria-label="Open ${escapeHtml(s.name)}"` : ""}>
         <div class="student-card-main">
-          ${editable ? `<div class="student-card-leading-actions"><button class="icon-action edit-action" type="button" data-edit-student="${s.id}" aria-label="Edit ${escapeHtml(s.name)}">✎</button><button class="icon-action delete-action" type="button" data-delete-student="${s.id}" aria-label="Delete ${escapeHtml(s.name)}">⌫</button></div>` : ""}
           <div class="student-avatar" aria-hidden="true">${escapeHtml(s.name.trim().charAt(0).toUpperCase() || "S")}</div>
-          <div class="student-card-copy"><strong>${escapeHtml(s.name)}</strong><span><span translate="no">${escapeHtml(s.studentNumber || "")}</span> · ${escapeHtml(yearLabel(s.year))}</span><span>Admitted ${escapeHtml(s.admissionDate || "—")}</span></div>
-          <span class="badge ${s.status === "active" ? "paid" : "due"}">${s.status === "active" ? "Active" : "Inactive"}</span>
+          <div class="student-card-copy">
+            <strong class="${nameClass.trim()}">${escapeHtml(s.name)}</strong>
+            <span><span translate="no">${escapeHtml(s.studentNumber || "")}</span> · ${escapeHtml(yearLabel(s.year))}</span>
+            <span class="admitted-line">Admitted ${escapeHtml(s.admissionDate || "—")}</span>
+          </div>
+          <div class="student-card-side">
+            <span class="badge ${s.status === "active" ? "paid" : "due"}">${s.status === "active" ? "Active" : "Inactive"}</span>
+            ${editable ? `<div class="student-card-tools">
+              <button class="icon-action edit-action" type="button" data-edit-student="${s.id}" aria-label="Edit ${escapeHtml(s.name)}">${SVG_ICONS.edit}</button>
+              <button class="icon-action delete-action" type="button" data-delete-student="${s.id}" aria-label="Delete ${escapeHtml(s.name)}">${SVG_ICONS.trash}</button>
+            </div>` : ""}
+          </div>
         </div>
         <div class="student-card-actions">
-          ${s.whatsapp ? `<a class="wa-link" href="https://wa.me/88${escapeHtml(s.whatsapp.replace(/\D/g, ""))}" target="_blank" rel="noopener">WhatsApp</a>` : ""}
+          ${s.whatsapp ? `<a class="contact-link chat" href="https://wa.me/88${escapeHtml(waNumber)}" target="_blank" rel="noopener" aria-label="WhatsApp ${escapeHtml(s.name)}">${SVG_ICONS.chat}</a>` : ""}
+          ${s.phone ? `<a class="contact-link call" href="tel:${escapeHtml(s.phone)}" aria-label="Call ${escapeHtml(s.name)}">${SVG_ICONS.call}</a>` : ""}
+          ${s.guardianPhone ? `<a class="contact-link guardian" href="tel:${escapeHtml(s.guardianPhone)}" aria-label="Call guardian of ${escapeHtml(s.name)}">${SVG_ICONS.family}</a>` : ""}
         </div>
-      </article>`).join("")
+      </article>`;
+      }).join("")
     : emptyState(`No ${studentStatusFilter} students match this search.`);
 
+  document.querySelectorAll("[data-student-card]").forEach((card) => {
+    const open = () => startEditStudent(card.dataset.studentCard);
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("button, a")) return;
+      open();
+    });
+    card.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
+    });
+  });
   document.querySelectorAll("[data-edit-student]").forEach((button) => button.addEventListener("click", () => startEditStudent(button.dataset.editStudent)));
   document.querySelectorAll("[data-delete-student]").forEach((button) => button.addEventListener("click", async () => {
     if (!requireEdit("students")) return;
@@ -1054,8 +1111,9 @@ function startEditStudent(id) {
   const student = state.students.find((item) => item.id === id);
   if (!student) return;
   editingStudentId = id;
+  els.studentDetailPage.hidden = false;
+  els.studentDetailTitle.textContent = student.name;
   els.studentForm.hidden = false;
-  els.showStudentFormBtn.hidden = true;
   els.studentFormTitle.textContent = "Edit student";
   els.studentSubmitBtn.textContent = "Save changes";
   els.studentCancelBtn.hidden = false;
@@ -1079,7 +1137,6 @@ function startEditStudent(id) {
   els.studentBatch.value = student.batchId || "";
   els.admissionPaid.value = state.settings.admissionFee;
   renderStudentCourseBox();
-  switchView("students", viewTitle("students"));
   els.studentName.focus();
 }
 
@@ -1087,7 +1144,8 @@ function resetStudentForm() {
   editingStudentId = null;
   els.studentForm.reset();
   els.studentForm.hidden = true;
-  els.showStudentFormBtn.hidden = false;
+  els.studentDetailPage.hidden = true;
+  els.studentDetailTitle.textContent = "Student";
   els.studentFormTitle.textContent = "New student";
   els.studentSubmitBtn.textContent = "Add student";
   els.studentCancelBtn.hidden = true;
@@ -1208,7 +1266,7 @@ function renderCourses() {
 
 els.batchForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
+  if (!isManager()) { toast(t("msgAdminOnly")); return; }
   const name = els.batchName.value.trim();
   if (!name) { toast(t("msgBatchReq")); els.batchName.focus(); return; }
   try {
@@ -1226,7 +1284,7 @@ els.batchForm.addEventListener("submit", async (event) => {
 
 function renderBatches() {
   if (!canView("courses")) return;
-  const editable = isAdmin();
+  const editable = isManager();
   els.batchChips.innerHTML = state.batches.length
     ? state.batches.map((b) => {
         const count = state.students.filter((s) => s.batchId === b.id).length;
@@ -1285,7 +1343,7 @@ function renderOfferingForm() {
 
 els.offeringForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
+  if (!isManager()) { toast(t("msgAdminOnly")); return; }
   const courseId = els.offeringCourse.value;
   if (!courseId) { toast(t("msgCourseReq")); return; }
   const weekdays = [...els.offeringDaysBox.querySelectorAll("input:checked")].map((c) => Number(c.value));
@@ -1333,7 +1391,7 @@ function resetOfferingForm() {
 
 function renderOfferings() {
   if (!canView("courses")) return;
-  const editable = isAdmin();
+  const editable = isManager();
   els.offeringsList.innerHTML = state.offerings.length
     ? state.offerings.map((o) => `
         <div class="compact-item">
@@ -1352,7 +1410,7 @@ function renderOfferings() {
   document.querySelectorAll("[data-edit-offering]").forEach((b) =>
     b.addEventListener("click", () => {
       const offering = state.offerings.find((o) => o.id === b.dataset.editOffering);
-      if (!offering || !isAdmin()) return;
+      if (!offering || !isManager()) return;
       editingOfferingId = offering.id;
       renderOfferingForm();
       els.offeringCourse.value = offering.courseId;
@@ -1369,7 +1427,7 @@ function renderOfferings() {
     }));
   document.querySelectorAll("[data-delete-offering]").forEach((b) =>
     b.addEventListener("click", async () => {
-      if (!isAdmin()) return;
+      if (!isManager()) return;
       const offering = state.offerings.find((o) => o.id === b.dataset.deleteOffering);
       if (!offering) return;
       if (!confirmDelete(t("confirmDeleteOffering"))) return;
@@ -1390,35 +1448,61 @@ function renderOfferings() {
 /* ================= attendance ================= */
 
 els.attendanceDate.addEventListener("change", renderAttendanceClasses);
+els.attendanceSubject.addEventListener("change", () => {
+  attendanceSubjectId = els.attendanceSubject.value;
+  renderAttendanceClasses();
+});
+document.querySelectorAll("[data-roster-year]").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    attendanceYear = chip.dataset.rosterYear;
+    document.querySelectorAll("[data-roster-year]").forEach((item) => {
+      const active = item === chip;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+    renderAttendanceClasses();
+  });
+});
+
+async function loadOfferingCounts() {
+  const { data, error } = await sb.rpc("offering_enrollment_counts");
+  if (!error && Array.isArray(data)) {
+    state.offeringCounts = {};
+    for (const row of data) state.offeringCounts[row.offeringId] = Number(row.count || 0);
+  }
+}
 
 async function renderAttendanceClasses() {
   const date = els.attendanceDate.value || today;
   const dow = new Date(date + "T12:00:00").getDay();
-  const mine = myOfferings().filter((o) => o.active && o.weekdays.includes(dow));
+  const mine = myOfferings()
+    .filter((o) => o.active && o.weekdays.includes(dow))
+    .filter((o) => attendanceYear === "all" || o.year === attendanceYear);
   mine.sort((a, b) => (a.classTime || "99:99").localeCompare(b.classTime || "99:99"));
 
-  const sessions = await safe(sb.from("class_sessions").select("id, offering_id, status").eq("class_date", date));
-  const sessionByOffering = new Map(sessions.map((s) => [s.offering_id, s]));
+  await loadOfferingCounts();
 
-  els.attendanceClasses.innerHTML = mine.length
+  const prev = attendanceSubjectId;
+  els.attendanceSubject.innerHTML = mine.length
     ? mine.map((o) => {
-        const session = sessionByOffering.get(o.id);
-        const held = session?.status === "held";
-        return `
-        <button class="class-btn${activeSession.offering === o.id ? " active" : ""}" type="button" data-class="${o.id}">
-          <div>
-            <strong>${escapeHtml(getCourseName(o.courseId))}</strong>
-            <span>${escapeHtml(yearLabel(o.year))} · ${escapeHtml(o.group)}${o.classTime ? " · " + escapeHtml(o.classTime) : ""}</span>
-          </div>
-          <span class="badge ${held ? "paid" : ""}">${held ? t("held") : t("scheduled")}</span>
-        </button>`;
+        const count = state.offeringCounts[o.id] ?? 0;
+        return `<option value="${o.id}">${escapeHtml(getCourseName(o.courseId))} · ${escapeHtml(yearLabel(o.year))}${o.group ? " · " + escapeHtml(o.group) : ""} (${count})</option>`;
       }).join("")
-    : emptyState(t("emptyClasses"));
+    : `<option value="">No class scheduled</option>`;
+  if (mine.some((o) => o.id === prev)) els.attendanceSubject.value = prev;
+  attendanceSubjectId = els.attendanceSubject.value || "";
 
-  document.querySelectorAll("[data-class]").forEach((b) =>
-    b.addEventListener("click", () => openClassRoster(b.dataset.class, date)));
-  els.rosterPanel.hidden = true;
-  activeSession = { offering: null, sessionId: null, marks: new Map() };
+  els.attendanceHistoryNote.hidden = date === today;
+
+  const chosen = mine.find((o) => o.id === attendanceSubjectId);
+  if (!chosen) {
+    els.attendanceClasses.innerHTML = emptyState(date === today ? t("emptyClasses") : "Nothing saved for this subject on this date.");
+    els.rosterPanel.hidden = true;
+    activeSession = { offering: null, sessionId: null, marks: new Map() };
+    return;
+  }
+  els.attendanceClasses.innerHTML = "";
+  await openClassRoster(chosen.id, date);
 }
 
 async function openClassRoster(offeringId, date) {
@@ -1427,10 +1511,22 @@ async function openClassRoster(offeringId, date) {
     toast(t("msgNoCoursePerm"));
     return;
   }
-  document.querySelectorAll(".class-btn").forEach((b) => b.classList.toggle("active", b.dataset.class === offeringId));
   try {
-    const { data: sessionId, error: sessErr } = await sb.rpc("get_or_create_class_session", { p_offering: offeringId, p_date: date });
-    if (sessErr) throw sessErr;
+    let sessionId = null;
+    if (date === today) {
+      const { data: created, error: sessErr } = await sb.rpc("get_or_create_class_session", { p_offering: offeringId, p_date: date });
+      if (sessErr) throw sessErr;
+      sessionId = created;
+    } else {
+      const { data: found } = await sb.from("class_sessions").select("id").eq("offering_id", offeringId).eq("class_date", date).maybeSingle();
+      if (!found) {
+        els.rosterPanel.hidden = true;
+        els.attendanceClasses.innerHTML = emptyState("Nothing saved for this subject on this date.");
+        activeSession = { offering: null, sessionId: null, marks: new Map() };
+        return;
+      }
+      sessionId = found.id;
+    }
     const { data: roster, error: rosterErr } = await sb.rpc("teacher_roster", { p_session: sessionId });
     if (rosterErr) throw rosterErr;
     activeSession = { offering: offeringId, sessionId, marks: new Map() };
@@ -1452,18 +1548,24 @@ async function openClassRoster(offeringId, date) {
 
 function renderRoster(roster) {
   const offering = state.offerings.find((o) => o.id === activeSession.offering);
-  const editable = canMarkOffering(offering) && (isAdmin() || (els.attendanceDate.value || today) === today);
+  const date = els.attendanceDate.value || today;
+  const editable = isManager() || (canMarkOffering(offering) && date === today);
   els.attendanceActions.style.display = editable ? "" : "none";
   els.rosterPanel.dataset.roster = JSON.stringify(roster);
   els.attendanceRoster.innerHTML = roster.length
     ? roster.map((r) => {
         const status = activeSession.marks.get(r.id) || "";
+        const calls = [
+          r.phone ? `<a class="contact-link call" href="tel:${escapeHtml(r.phone)}" aria-label="Call ${escapeHtml(r.name)}">${SVG_ICONS.call}</a>` : "",
+          r.guardian_phone ? `<a class="contact-link guardian" href="tel:${escapeHtml(r.guardian_phone)}" aria-label="Call guardian of ${escapeHtml(r.name)}">${SVG_ICONS.family}</a>` : "",
+        ].filter(Boolean).join("");
         return `
         <div class="attendance-row">
-          <div>
+          <div class="attendance-copy">
             <strong>${escapeHtml(r.name)}</strong>
-            <span>${escapeHtml(r.college || t("dash"))} · ${escapeHtml(r.group || t("dash"))} · ${escapeHtml(yearLabel(r.year))}</span>
+            <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))} · ${escapeHtml(r.group || t("dash"))}</span>
           </div>
+          ${calls ? `<div class="attendance-calls">${calls}</div>` : ""}
           ${editable ? `<div class="inline-tools">
             <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
             <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
@@ -1535,10 +1637,6 @@ function feeMatches(s, query) {
   return query.split(/\s+/).filter(Boolean).every((part) => hay.includes(part));
 }
 
-let currentFeeStudentId = null;
-let lastReceipt = null;
-let pendingDiscount = null;
-
 function invoicesFor(studentId, month) {
   return state.invoices.filter((invoice) => invoice.studentId === studentId && invoice.month === month);
 }
@@ -1555,11 +1653,12 @@ function renderFees() {
   if (!canView("fees")) return;
   const month = els.feeMonth.value || thisMonth;
   const monthInvoices = state.invoices.filter((invoice) => invoice.month === month);
-  const monthAgreed = monthInvoices.reduce((sum, invoice) => sum + invoice.agreedFee, 0);
   const monthPaid = monthInvoices.reduce((sum, invoice) => sum + invoice.paid, 0);
-  const allPaid = state.invoices.reduce((sum, invoice) => sum + invoice.paid, 0);
+  const allPaid = state.feePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const todayPaid = state.feePayments.filter((payment) => payment.payment_date === today).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   els.feeCollectTotal.textContent = formatMoney(allPaid);
-  els.feeCollectCount.textContent = `${month}: ${formatMoney(monthPaid)} collected of ${formatMoney(monthAgreed)}`;
+  els.feeTodayCollect.textContent = formatMoney(todayPaid);
+  els.feeMonthCollect.textContent = formatMoney(monthPaid);
   const filter = els.feeFilter.value;
   const query = els.feeSearch.value.trim().toLowerCase();
   const students = state.students.filter((student) => {
@@ -1571,19 +1670,16 @@ function renderFees() {
   els.feeRows.innerHTML = students.length
     ? students.map((student) => {
         const due = monthDue(student.id, month);
+        const discount = invoicesFor(student.id, month).reduce((sum, invoice) => sum + (invoice.discount || 0), 0);
+        const badge = due > 0 ? `Due ${formatMoney(due)}` : discount > 0 ? "Discounted" : "Paid";
         return `<button class="fee-student-card" type="button" data-fee-student="${student.id}">
           <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
           <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))}</span></span>
-          <span class="fee-student-balance"><strong class="badge ${due > 0 ? "due" : "paid"}">${due > 0 ? `Due ${formatMoney(due)}` : "Paid"}</strong></span>
+          <span class="fee-student-balance"><strong class="badge ${due > 0 ? "due" : "paid"}">${badge}</strong></span>
         </button>`;
       }).join("")
     : emptyState("No active students match this month and search.");
   document.querySelectorAll("[data-fee-student]").forEach((button) => button.addEventListener("click", () => openFeeDetail(button.dataset.feeStudent)));
-  const paidInvoices = monthInvoices.filter((invoice) => invoice.paid > 0).slice(-8).reverse();
-  els.paymentHistory.innerHTML = paidInvoices.length ? paidInvoices.map((invoice) => {
-    const student = state.students.find((item) => item.id === invoice.studentId);
-    return `<div class="compact-item"><div><strong>${escapeHtml(student?.name || "Deleted student")}</strong><span>${escapeHtml(student?.studentNumber || "")} · ${escapeHtml(invoice.month)}</span></div><span class="badge paid">${formatMoney(invoice.paid)}</span></div>`;
-  }).join("") : emptyState("No collections for this month yet.");
 }
 
 async function openFeeDetail(studentId) {
@@ -1599,84 +1695,129 @@ async function openFeeDetail(studentId) {
     if (error) throw error;
     history = data || [];
   } catch (err) { fail(err); }
+  const editing = editingReceiptId ? history.find((item) => item.receiptId === editingReceiptId && item.kind !== "legacy") : null;
+  const editBase = due + (editing ? Number(editing.paid || 0) + Number(editing.discount || 0) : 0);
   const courses = invoices.map((invoice) => `<div class="fee-course-row"><span>${escapeHtml(getCourseName(invoice.courseId))}</span><span>${formatMoney(invoice.agreedFee)}</span></div>`).join("");
-  const historyHtml = history.length ? history.map((item) => `<article class="fee-history-item"><div><strong>${item.kind === "legacy" ? "Legacy payment" : Number(item.paid) > 0 ? `Paid ${formatMoney(item.paid)}` : "Discount"}${Number(item.discount) > 0 ? ` · Disc ${formatMoney(item.discount)}` : ""}</strong><span>Remaining ${item.remaining == null ? "Not available" : formatMoney(item.remaining)} · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div><button type="button" class="small-btn" data-print-history="${escapeHtml(item.receiptId)}">Print</button></article>`).join("") : emptyState("No payment history for this month.");
-  const canCollect = canEditTab("fees") && due > 0;
+  const historyHtml = history.length ? history.map((item) => {
+    const title = item.kind === "legacy" ? "Legacy payment" : Number(item.paid) > 0 ? `Paid ${formatMoney(item.paid)}` : "Discount";
+    const disc = Number(item.discount) > 0 ? ` · Disc ${formatMoney(item.discount)}` : "";
+    const remaining = item.remaining == null ? "Not available" : formatMoney(item.remaining);
+    const tools = item.kind !== "legacy" && isAdmin() ? `
+      <div class="receipt-tools">
+        <button type="button" class="small-btn" data-edit-receipt="${escapeHtml(item.receiptId)}">Edit</button>
+        <button type="button" class="small-btn" data-delete-receipt="${escapeHtml(item.receiptId)}">Delete</button>
+      </div>` : "";
+    return `<article class="fee-history-item"><div><strong>${title}${disc}</strong><span>Remaining ${remaining} · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div>${tools}<button type="button" class="small-btn" data-print-history="${escapeHtml(item.receiptId)}">Print</button></article>`;
+  }).join("") : emptyState("No payment history for this month.");
+  const showForm = canEditTab("fees") && (due > 0 || editing);
+  const formAmount = editing ? Number(editing.paid || 0) : due;
+  const formDate = editing ? (editing.paymentDate || today) : today;
+  const formDiscount = editing ? Number(editing.discount || 0) > 0 : false;
   els.feeDetailTitle.textContent = `${student.name} · ${month}`;
   els.feeDetailBody.innerHTML = `
     <div class="fee-detail-student"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))} · ${escapeHtml(yearLabel(student.year))}</span><span class="badge ${due > 0 ? "due" : "paid"}">${due > 0 ? `Due ${formatMoney(due)}` : "Fully paid"}</span></div></div>
     <section class="fee-detail-section"><h3>Monthly fees</h3>${courses || emptyState("No invoices for this month.")}<div class="fee-course-total"><strong>Remaining due</strong><strong>${formatMoney(due)}</strong></div></section>
-    ${canCollect ? `<form id="feeCollectionForm" class="fee-collection-form"><h3>Collect payment</h3><div class="fee-amount-row"><label><span>Amount (৳)</span><input id="feePaymentAmount" type="number" min="0" max="${due}" step="0.01" value="${due}" required /></label><label class="discount-option"><input id="feeDiscountToggle" type="checkbox" /><span>Discount</span></label></div><p id="feeDiscountPreview" class="discount-preview" hidden></p><label><span>Payment date</span><input id="feePaymentDate" type="date" value="${today}" required /></label><button id="collectFeeBtn" class="primary-btn" type="submit">Collect</button></form>` : ""}
+    ${showForm ? `<form id="feeCollectionForm" class="fee-collection-form"><h3>${editing ? "Edit receipt" : "Collect payment"}</h3>${editing ? `<p class="muted-note">Saving replaces this receipt with the new amount and date.</p>` : ""}<div class="fee-amount-row"><label><span>Amount (৳)</span><input id="feePaymentAmount" type="number" min="0" max="${editBase}" step="0.01" value="${formAmount}" required /></label><label class="discount-option"><input id="feeDiscountToggle" type="checkbox" ${formDiscount ? "checked" : ""} /><span>Discount</span></label></div><p id="feeDiscountPreview" class="discount-preview" hidden></p><label><span>Payment date</span><input id="feePaymentDate" type="date" value="${formDate}" required /></label><div class="form-actions"><button id="collectFeeBtn" class="primary-btn" type="submit">${editing ? "Update receipt" : "Collect"}</button>${editing ? `<button type="button" id="cancelEditReceiptBtn" class="secondary-btn">Cancel edit</button>` : ""}</div></form>` : ""}
     <section class="fee-detail-section"><h3>Collection history</h3><div class="fee-history-list">${historyHtml}</div></section>`;
-  if (!els.feeDetailDialog.open) els.feeDetailDialog.showModal();
+  els.feeDetailPage.hidden = false;
   els.feeDetailBody.querySelectorAll("[data-print-history]").forEach((button) => button.addEventListener("click", () => printExistingReceipt(button.dataset.printHistory, student, history)));
+  els.feeDetailBody.querySelectorAll("[data-edit-receipt]").forEach((button) => button.addEventListener("click", () => {
+    editingReceiptId = button.dataset.editReceipt;
+    openFeeDetail(studentId);
+  }));
+  els.feeDetailBody.querySelectorAll("[data-delete-receipt]").forEach((button) => button.addEventListener("click", () => deleteReceipt(button.dataset.deleteReceipt, student)));
+  document.getElementById("cancelEditReceiptBtn")?.addEventListener("click", () => {
+    editingReceiptId = null;
+    openFeeDetail(studentId);
+  });
   document.getElementById("feeCollectionForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
-    submitMonthFee(student, month, due);
+    submitMonthFee(student, month, due, editBase);
   });
   const updateDiscountPreview = () => {
     const amount = Number(document.getElementById("feePaymentAmount").value);
     const checkbox = document.getElementById("feeDiscountToggle");
     const preview = document.getElementById("feeDiscountPreview");
-    const discount = Math.max(0, due - (Number.isFinite(amount) ? amount : 0));
+    const discount = Math.max(0, editBase - (Number.isFinite(amount) ? amount : 0));
     preview.hidden = !checkbox.checked;
     preview.textContent = `Discount: ${formatMoney(discount)} · Remaining after discount: ${formatMoney(0)}`;
   };
   document.getElementById("feePaymentAmount")?.addEventListener("input", updateDiscountPreview);
   document.getElementById("feeDiscountToggle")?.addEventListener("change", updateDiscountPreview);
+  updateDiscountPreview();
 }
 
-async function submitMonthFee(student, month, due) {
+async function submitMonthFee(student, month, editBase) {
   if (!requireEdit("fees")) return;
   const amount = Number(document.getElementById("feePaymentAmount").value);
-  if (!Number.isFinite(amount) || amount < 0 || amount > due) { toast("Enter an amount between 0 and the remaining due."); return; }
+  if (!Number.isFinite(amount) || amount < 0 || amount > editBase) { toast(`Enter an amount between 0 and ${formatMoney(editBase)}.`); return; }
   const applyDiscount = document.getElementById("feeDiscountToggle").checked;
   if (amount === 0 && !applyDiscount) { toast("Enter an amount or choose Discount."); return; }
   if (applyDiscount) {
-    pendingDiscount = { student, month, amount, due, paymentDate: document.getElementById("feePaymentDate").value };
-    els.discountConfirmText.textContent = `Collect ${formatMoney(amount)} and waive the remaining ${formatMoney(due - amount)} for ${month}? The next month’s fees will not change.`;
+    pendingDiscount = { student, month, amount, paymentDate: document.getElementById("feePaymentDate").value, waive: editBase - amount, editReceiptId: editingReceiptId };
+    els.discountConfirmText.textContent = editingReceiptId
+      ? `Update this receipt to ${formatMoney(amount)} and waive the remaining ${formatMoney(editBase - amount)} for ${month}?`
+      : `Collect ${formatMoney(amount)} and waive the remaining ${formatMoney(editBase - amount)} for ${month}? The next month's fees will not change.`;
     els.discountConfirmDialog.showModal();
     return;
   }
-  await saveMonthFee(student, month, amount, document.getElementById("feePaymentDate").value, false);
+  await saveMonthFee(student, month, amount, document.getElementById("feePaymentDate").value, false, editingReceiptId);
 }
 
 els.confirmDiscountBtn.addEventListener("click", async () => {
   if (!pendingDiscount) return;
-  const { student, month, amount, paymentDate } = pendingDiscount;
+  const { student, month, amount, paymentDate, editReceiptId } = pendingDiscount;
   pendingDiscount = null;
   els.discountConfirmDialog.close();
-  await saveMonthFee(student, month, amount, paymentDate, true);
+  await saveMonthFee(student, month, amount, paymentDate, true, editReceiptId);
 });
 els.cancelDiscountBtn.addEventListener("click", () => { pendingDiscount = null; els.discountConfirmDialog.close(); });
 
-async function saveMonthFee(student, month, amount, paymentDate, applyDiscount) {
+async function saveMonthFee(student, month, amount, paymentDate, applyDiscount, editReceiptId) {
   const collectButton = document.getElementById("collectFeeBtn");
   if (collectButton) collectButton.disabled = true;
   try {
-    const { data, error } = await sb.rpc("collect_student_month_fee", {
-      p_student: student.id, p_month: `${month}-01`, p_amount: amount,
-      p_payment_date: paymentDate, p_apply_discount: applyDiscount,
-    });
+    const { data, error } = editReceiptId
+      ? await sb.rpc("edit_student_fee_receipt", { p_receipt: editReceiptId, p_amount: amount, p_payment_date: paymentDate, p_apply_discount: applyDiscount })
+      : await sb.rpc("collect_student_month_fee", {
+          p_student: student.id, p_month: `${month}-01`, p_amount: amount,
+          p_payment_date: paymentDate, p_apply_discount: applyDiscount,
+        });
     if (error) throw error;
-    lastReceipt = { student, month, receiptId: data?.receipt_id || "", paid: Number(data?.paid || 0), discount: Number(data?.discount || 0), remaining: Number(data?.remaining || 0), paymentDate, recordedAt: data?.recorded_at || new Date().toISOString() };
+    editingReceiptId = null;
+    lastReceipt = { student, month, paid: Number(data?.paid || 0), discount: Number(data?.discount || 0), remaining: Number(data?.remaining || 0), paymentDate, recordedAt: data?.recorded_at || new Date().toISOString() };
   } catch (err) {
     if (collectButton) collectButton.disabled = false;
     fail(err);
     return;
   }
-  toast("Payment saved.");
-  logActivity("Fee collection", `${student.studentNumber} · ${formatMoney(amount)}${applyDiscount ? " with discount" : ""}`);
+  toast(editReceiptId ? "Receipt updated." : "Payment saved.");
+  logActivity(editReceiptId ? "Receipt edit" : "Fee collection", `${student.studentNumber} · ${formatMoney(amount)}${applyDiscount ? " with discount" : ""}`);
   await db.loadFinance();
   renderFees();
   await openFeeDetail(student.id);
   if (amount > 0 || applyDiscount) openReceipt(lastReceipt);
 }
 
+async function deleteReceipt(receiptId, student) {
+  if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
+  if (!confirmDelete("Delete this receipt? The collected amount and discount will be reversed.")) return;
+  try {
+    const { error } = await sb.rpc("void_student_fee_receipt", { p_receipt: receiptId });
+    if (error) throw error;
+  } catch (err) { fail(err); return; }
+  editingReceiptId = null;
+  toast("Receipt deleted.");
+  logActivity("Receipt delete", student.studentNumber);
+  await db.loadFinance();
+  renderFees();
+  await openFeeDetail(student.id);
+}
+
 function openReceipt(receipt) {
   if (!receipt) return;
-  const { student, month, receiptId, paid, discount, remaining, paymentDate, recordedAt } = receipt;
-  els.receiptPaper.innerHTML = `<header><strong>${escapeHtml(state.settings.coachingName)}</strong><span>FEE RECEIPT</span></header><hr><p>Receipt: <span translate="no">${escapeHtml(receiptId || "—")}</span><br><strong>${escapeHtml(student.name)}</strong><br><span translate="no">${escapeHtml(student.studentNumber)}</span><br>${escapeHtml(yearLabel(student.year))} · ${escapeHtml(getBatchName(student.batchId))}</p><hr><p>Receipt date: ${escapeHtml(paymentDate)}<br>Time: ${new Date(recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}<br>Billing month: ${escapeHtml(month)}</p><hr><dl><dt>Paid</dt><dd>${formatMoney(paid)}</dd><dt>Discount</dt><dd>${formatMoney(discount)}</dd><dt>Remaining</dt><dd>${formatMoney(remaining)}</dd></dl><hr><p class="receipt-thanks">Thank you</p>`;
+  const { student, paid, discount, remaining, paymentDate, recordedAt } = receipt;
+  els.receiptPaper.innerHTML = `<header><strong>${escapeHtml(state.settings.coachingName)}</strong></header><hr><p><strong>${escapeHtml(student.name)}</strong><br><span translate="no">${escapeHtml(student.studentNumber)}</span><br>${escapeHtml(yearLabel(student.year))} · ${escapeHtml(getBatchName(student.batchId))}</p><hr><p>${escapeHtml(paymentDate || today)}<br>${new Date(recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p><hr><dl><dt>Paid</dt><dd>${formatMoney(paid)}</dd><dt>Discount</dt><dd>${formatMoney(discount)}</dd><dt>Remaining</dt><dd>${formatMoney(remaining)}</dd></dl><hr><p class="receipt-thanks">Thank you</p>`;
   if (!els.receiptDialog.open) els.receiptDialog.showModal();
 }
 
@@ -1686,7 +1827,10 @@ function printExistingReceipt(receiptId, student, history) {
   openReceipt({ student, month: String(item.month || "").slice(0, 7), receiptId, paid: Number(item.paid || 0), discount: Number(item.discount || 0), remaining: Number(item.remaining || 0), paymentDate: item.paymentDate || today, recordedAt: item.recordedAt || new Date().toISOString() });
 }
 
-els.closeFeeDetail.addEventListener("click", () => els.feeDetailDialog.close());
+els.feeBackBtn.addEventListener("click", () => {
+  editingReceiptId = null;
+  els.feeDetailPage.hidden = true;
+});
 els.closeReceiptBtn.addEventListener("click", () => els.receiptDialog.close());
 els.printReceiptBtn.addEventListener("click", () => window.print());
 els.feeFilter.addEventListener("change", renderFees);
@@ -1694,15 +1838,26 @@ els.feeSearch.addEventListener("input", renderFees);
 
 /* ================= money / bank / dues ================= */
 
+document.querySelectorAll("[data-entry-type]").forEach((button) => {
+  button.addEventListener("click", () => {
+    document.querySelectorAll("[data-entry-type]").forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-pressed", String(active));
+    });
+    els.moneyType.value = button.dataset.entryType;
+  });
+});
+
 els.moneyForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!requireEdit("money")) return;
   const amount = Number(els.moneyAmount.value);
   if (!Number.isFinite(amount) || amount <= 0) { toast(t("msgAmtPos")); return; }
   const row = {
-    id: uuid(), date: els.moneyDate.value || today, type: els.moneyType.value,
+    id: uuid(), date: els.moneyDate.value || today, type: els.moneyType.value === "expense" ? "expense" : "income",
     category: els.moneyCategory.value.trim() || t("general"), amount,
-    note: els.moneyNote.value.trim(), by_username: currentUser ? currentUser.username : "",
+    note: "", by_username: currentUser ? currentUser.username : "",
   };
   try {
     const { error } = await sb.from("money_entries").insert(row);
@@ -1713,71 +1868,24 @@ els.moneyForm.addEventListener("submit", async (event) => {
   }
   els.moneyForm.reset();
   els.moneyDate.value = today;
+  els.moneyType.value = "income";
+  document.querySelectorAll("[data-entry-type]").forEach((item) => item.classList.toggle("active", item.dataset.entryType === "income"));
   toast(t("tEntry"));
-  logActivity("Money entry", `${row.category} — ${formatMoney(amount)}`);
+  logActivity(row.type === "income" ? "Income entry" : "Expense entry", `${row.category} — ${formatMoney(amount)}`);
   await db.loadFinance();
   renderAll();
 });
 
 function renderMoney() {
   if (!canView("money")) return;
-  const editable = canEditTab("money");
-  const monthSel = els.moneyMonth.value;
-  const daySel = els.moneyDay.value;
-  const inScope = (m) => {
-    if (daySel) return m.date === daySel;
-    if (monthSel) return (m.date || "").slice(0, 7) === monthSel;
-    return true;
-  };
-  const scoped = state.money.filter(inScope);
-  const income = scoped.filter((m) => m.type === "income").reduce((s, m) => s + m.amount, 0);
-  const cost = scoped.filter((m) => m.type === "expense").reduce((s, m) => s + m.amount, 0);
-
-  els.metricIncome.textContent = formatMoney(income);
-  els.metricCost.textContent = formatMoney(cost);
-  els.metricBalance.textContent = formatMoney(income - cost);
-  els.metricMonthNet.textContent = formatMoney(
-    state.money.filter((m) => (m.date || "").slice(0, 7) === thisMonth)
-      .reduce((s, m) => s + (m.type === "income" ? m.amount : -m.amount), 0),
-  );
-
-  const filter = els.moneyFilter.value;
-  const rows = scoped.filter((m) => filter === "all" || m.type === filter);
-  els.moneyRows.innerHTML = rows.length
-    ? rows.map((m) => `
-      <tr>
-        <td data-label="${tr("thDate")}">${escapeHtml(m.date || "-")}</td>
-        <td data-label="${tr("thType")}"><span class="badge ${m.type === "income" ? "paid" : "due"}">${m.type === "income" ? tr("income") : tr("expense")}</span></td>
-        <td data-label="${tr("thCategory")}"><strong>${escapeHtml(m.category || t("general"))}</strong><br><span>${escapeHtml(m.note || (m.by ? t("entryBy") + m.by : ""))}</span></td>
-        <td data-label="${tr("thAmount")}">${formatMoney(m.amount)}</td>
-        ${editable ? `<td><button class="small-btn" type="button" data-delete-money="${m.id}">${t("del")}</button></td>` : ""}
-      </tr>`).join("")
-    : `<tr><td colspan="5">${emptyState(t("emptyMoney"))}</td></tr>`;
-
-  document.querySelectorAll("#money .col-action").forEach((c) => { c.style.display = editable ? "" : "none"; });
-  document.querySelectorAll("[data-delete-money]").forEach((b) =>
-    b.addEventListener("click", async () => {
-      if (!requireEdit("money")) return;
-      const entry = state.money.find((m) => m.id === b.dataset.deleteMoney);
-      if (!entry) return;
-      if (!confirmDelete(`${entry.category || ""} — ${formatMoney(entry.amount)}: ${t("confirmDeleteMoney")}`)) return;
-      try {
-        const { error } = await sb.from("money_entries").delete().eq("id", entry.id);
-        if (error) throw error;
-      } catch (err) {
-        fail(err);
-        return;
-      }
-      toast(t("tEntryDel"));
-      logActivity("Delete money", `${entry.category || ""} — ${formatMoney(entry.amount)}`);
-      await db.loadFinance();
-      renderAll();
-    }));
+  const todayEntries = state.money.filter((m) => m.date === today);
+  const todayIncome = todayEntries.filter((m) => m.type === "income").reduce((s, m) => s + m.amount, 0);
+  const todayCost = todayEntries.filter((m) => m.type === "expense").reduce((s, m) => s + m.amount, 0);
+  els.todayIncomeMoney.textContent = formatMoney(todayIncome);
+  els.todayCostMoney.textContent = formatMoney(todayCost);
+  els.todayNetMoney.textContent = formatMoney(todayIncome - todayCost);
+  els.moneyBalanceToday.textContent = formatMoney(bankBalance());
 }
-
-els.moneyMonth.addEventListener("change", () => { els.moneyDay.value = ""; renderMoney(); });
-els.moneyDay.addEventListener("change", () => { els.moneyMonth.value = ""; renderMoney(); });
-els.moneyFilter.addEventListener("change", renderMoney);
 
 function bankBalance() {
   return state.bank.opening
@@ -1845,7 +1953,7 @@ els.bankForm.addEventListener("submit", async (event) => {
 });
 
 els.bankOpeningBtn.addEventListener("click", async () => {
-  if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
+  if (!isManager()) { toast(t("msgAdminOnly")); return; }
   const value = Number(els.bankOpening.value === "" ? 0 : els.bankOpening.value);
   try {
     const { error } = await sb.from("bank_account").update({ opening_balance: value, updated_at: new Date().toISOString() }).eq("id", true);
@@ -1983,7 +2091,7 @@ function renderPayroll() {
 
 els.payrollPayForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
+  if (!isManager()) { toast(t("msgAdminOnly")); return; }
   const teacherId = els.payTeacher.value;
   const amount = Number(els.payAmount.value);
   if (!teacherId) { toast(t("selectTeacher")); return; }
@@ -2009,18 +2117,9 @@ els.payrollPayForm.addEventListener("submit", async (event) => {
 /* ================= settings ================= */
 
 function renderSettings() {
-  if (!isAdmin()) return;
+  if (!isManager()) return;
   els.setName.value = state.settings.coachingName;
   els.setAdmissionFee.value = state.settings.admissionFee;
-  if (logoPicked !== null) {
-    els.logoPreview.src = logoPicked || "";
-    els.logoPreview.hidden = !logoPicked;
-    els.removeLogoBtn.hidden = !logoPicked;
-  } else {
-    els.logoPreview.src = state.settings.logoData || "";
-    els.logoPreview.hidden = !state.settings.logoData;
-    els.removeLogoBtn.hidden = !state.settings.logoData;
-  }
   renderChips(els.collegesBox, state.settings.colleges, "college");
   renderChips(els.groupsBox, state.settings.groups, "group");
 }
@@ -2058,47 +2157,17 @@ async function saveSettings(patch) {
 
 els.brandingForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
+  if (!isManager()) { toast(t("msgAdminOnly")); return; }
   const name = els.setName.value.trim();
   if (!name) return;
-  const patch = { coaching_name: name, updated_at: new Date().toISOString() };
-  if (logoPicked !== null) {
-    patch.logo_data = logoPicked;
-  }
-  if (await saveSettings(patch)) {
-    logoPicked = null;
+  if (await saveSettings({ coaching_name: name, updated_at: new Date().toISOString() })) {
     logActivity("Save branding", name);
   }
 });
 
-els.setLogo.addEventListener("change", () => {
-  const file = els.setLogo.files[0];
-  if (!file) return;
-  if (file.size > 300 * 1024) {
-    toast(t("msgLogoBig"));
-    els.setLogo.value = "";
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = () => {
-    logoPicked = String(reader.result);
-    els.logoPreview.src = logoPicked;
-    els.logoPreview.hidden = false;
-    els.removeLogoBtn.hidden = false;
-  };
-  reader.readAsDataURL(file);
-});
-
-els.removeLogoBtn.addEventListener("click", () => {
-  logoPicked = "";
-  els.setLogo.value = "";
-  els.logoPreview.hidden = true;
-  els.removeLogoBtn.hidden = true;
-});
-
 els.admissionForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
+  if (!isManager()) { toast(t("msgAdminOnly")); return; }
   const fee = Number(els.setAdmissionFee.value === "" ? 0 : els.setAdmissionFee.value);
   if (Number.isNaN(fee) || fee < 0) { toast(t("msgFeeNeg")); return; }
   if (await saveSettings({ admission_fee: fee, updated_at: new Date().toISOString() })) {
@@ -2108,7 +2177,7 @@ els.admissionForm.addEventListener("submit", async (event) => {
 
 els.collegeAddForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!isAdmin()) return;
+  if (!isManager()) return;
   const value = els.addCollegeInput.value.trim();
   if (!value || state.settings.colleges.includes(value)) return;
   await saveSettings({ colleges: [...state.settings.colleges, value] });
@@ -2117,7 +2186,7 @@ els.collegeAddForm.addEventListener("submit", async (event) => {
 
 els.groupAddForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!isAdmin()) return;
+  if (!isManager()) return;
   const value = els.addGroupInput.value.trim();
   if (!value || state.settings.groups.includes(value)) return;
   await saveSettings({ groups: [...state.settings.groups, value] });
@@ -2398,7 +2467,7 @@ function renderUsers() {
 /* ================= activity ================= */
 
 function renderActivity() {
-  if (!isAdmin() || !els.activityRows) return;
+  if (!isManager() || !els.activityRows) return;
   const query = (els.activitySearch ? els.activitySearch.value : "").trim().toLowerCase();
   const userFilter = els.activityUser ? els.activityUser.value : "all";
   const users = [...new Set(state.activity.map((a) => a.user))];
@@ -2433,7 +2502,7 @@ async function renderDashboard() {
 
   let presentCount = 0;
   let absentCount = 0;
-  if (isAdmin()) {
+  if (isManager()) {
     const sessions = await safe(sb.from("class_sessions").select("class_attendance(status)").eq("class_date", today));
     for (const s of sessions || []) {
       for (const rec of s.class_attendance || []) {
@@ -2464,7 +2533,7 @@ async function renderDashboard() {
   els.metricDue.textContent = formatMoney(allDue);
 
   els.recentStudents.innerHTML = state.students.length
-    ? state.students.slice(0, 5).map((s) => `
+    ? state.students.slice(0, 3).map((s) => `
       <div class="compact-item">
         <div><strong>${escapeHtml(s.name)}</strong><span>${escapeHtml(s.college || "")} · ${escapeHtml(yearLabel(s.year))}</span></div>
         <span>${escapeHtml(s.phone || t("noPhone"))}</span>
@@ -2646,9 +2715,19 @@ els.importFileInput.addEventListener("change", () => {
 
 /* ================= render all ================= */
 
+const REMINDER_DISMISS_KEY = "ccmDismissedReminders";
+function reminderDismissKey() { return `${REMINDER_DISMISS_KEY}:${today}`; }
+function loadDismissedReminders() {
+  try { return new Set(JSON.parse(localStorage.getItem(reminderDismissKey()) || "[]")); } catch { return new Set(); }
+}
+function saveDismissedReminders(set) {
+  try { localStorage.setItem(reminderDismissKey(), JSON.stringify([...set])); } catch { /* ignore */ }
+}
+
 function renderReminders() {
   if (!canView("reminders")) { els.reminderRows.innerHTML = emptyState("No permission to view reminders."); return; }
   els.reminderDateLabel.textContent = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const dismissed = loadDismissedReminders();
   const monthDay = today.slice(5);
   const [year, month] = today.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
@@ -2662,42 +2741,233 @@ function renderReminders() {
       if (Number(today.slice(8, 10)) === anniversaryDay) matches.push({ student, kind: "Monthly fee due" });
     }
     return matches;
-  });
-  els.reminderRows.innerHTML = reminders.length ? reminders.map(({ student, kind }) => `<article class="reminder-card"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${kind}</span></div><span class="badge ${kind === "Birthday" ? "paid" : "due"}">${kind}</span></article>`).join("") : emptyState("No birthdays or monthly fee reminders today.");
+  }).filter(({ student, kind }) => !dismissed.has(`${student.id}|${kind}`));
+  els.reminderRows.innerHTML = reminders.length ? reminders.map(({ student, kind }) => {
+    const key = `${student.id}|${kind}`;
+    return `<article class="reminder-card"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${kind}</span></div><span class="badge ${kind === "Birthday" ? "paid" : "due"}">${kind}</span><button type="button" class="reminder-clear" data-dismiss-reminder="${escapeHtml(key)}" aria-label="Clear reminder for ${escapeHtml(student.name)}">✕</button></article>`;
+  }).join("") : emptyState("No birthdays or monthly fee reminders today.");
+  els.reminderRows.querySelectorAll("[data-dismiss-reminder]").forEach((button) => button.addEventListener("click", () => {
+    const set = loadDismissedReminders();
+    set.add(button.dataset.dismissReminder);
+    saveDismissedReminders(set);
+    renderReminders();
+  }));
 }
 
+function donutChart(segments, centerLabel) {
+  const total = segments.reduce((s, x) => s + x.value, 0);
+  if (!total) return emptyState("Nothing in this period.");
+  const colors = ["#2f9e63", "#e08a3c", "#4a7fd6", "#c0504d", "#8a63d2"];
+  const r = 42;
+  const circumference = 2 * Math.PI * r;
+  let offset = 0;
+  const arcs = segments.map((seg, index) => {
+    const frac = seg.value / total;
+    const dash = `${Math.max(0, frac * circumference - 1)} ${circumference - Math.max(0, frac * circumference - 1)}`;
+    const arc = `<circle cx="60" cy="60" r="${r}" fill="none" stroke="${seg.color || colors[index % colors.length]}" stroke-width="16" stroke-dasharray="${dash}" stroke-dashoffset="${-offset}"/>`;
+    offset += frac * circumference;
+    return arc;
+  }).join("");
+  const legend = segments.map((seg, index) => `<li><span class="dot" style="background:${seg.color || colors[index % colors.length]}"></span>${escapeHtml(seg.label)} · ${formatMoney(seg.value)}</li>`).join("");
+  return `<div class="donut"><svg viewBox="0 0 120 120" role="img" aria-label="${escapeHtml(centerLabel)}">${arcs}<text x="60" y="64" text-anchor="middle">${escapeHtml(centerLabel)}</text><text x="60" y="78" text-anchor="middle" class="donut-sub">${escapeHtml(centerLabel)}</text></svg></div><ul class="donut-legend">${legend}</ul>`;
+}
+
+function reportRange() {
+  if (reportPeriod === "day") {
+    const day = els.reportPeriodDate.value || today;
+    return { start: day, end: day, label: day, months: [day.slice(0, 7)] };
+  }
+  if (reportPeriod === "week") {
+    const anchor = els.reportPeriodDate.value || today;
+    const date = new Date(anchor + "T12:00:00");
+    const shift = (date.getDay() + 6) % 7;
+    const start = new Date(date);
+    start.setDate(date.getDate() - shift);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const iso = (d) => {
+      const copy = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      return copy.toISOString().slice(0, 10);
+    };
+    const startIso = iso(start);
+    const endIso = iso(end);
+    const months = [];
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const m = iso(cursor).slice(0, 7);
+      if (!months.includes(m)) months.push(m);
+      cursor.setMonth(cursor.getMonth() + 1);
+      cursor.setDate(1);
+    }
+    return { start: startIso, end: endIso, label: `${startIso} → ${endIso}`, months };
+  }
+  const month = els.reportPeriodMonth.value || thisMonth;
+  const [y, m] = month.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  return { start: `${month}-01`, end: `${month}-${String(lastDay).padStart(2, "0")}`, label: month, months: [month] };
+}
+
+const inRange = (value, range) => {
+  const day = String(value || "").slice(0, 10);
+  return day >= range.start && day <= range.end;
+};
+
 function renderReports() {
-  if (!isAdmin()) return;
-  const month = els.reportMonth.value || thisMonth;
-  const cash = state.feePayments.filter((payment) => (payment.payment_date || payment.paid_at?.slice(0, 10) || "").slice(0, 7) === month).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const discounts = state.feeDiscounts.filter((discount) => (discount.billing_month || discount.applied_at || "").slice(0, 7) === month).reduce((sum, discount) => sum + Number(discount.amount || 0), 0);
-  const due = state.invoices.filter((invoice) => invoice.month === month).reduce((sum, invoice) => sum + invoiceDue(invoice), 0);
-  const income = state.money.filter((entry) => entry.date?.slice(0, 7) === month && entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0);
-  const expense = state.money.filter((entry) => entry.date?.slice(0, 7) === month && entry.type === "expense").reduce((sum, entry) => sum + entry.amount, 0);
-  const newStudents = state.students.filter((student) => student.admissionDate?.slice(0, 7) === month);
+  if (!isManager()) return;
+  const range = reportRange();
+  const income = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0);
+  const expense = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "expense").reduce((sum, entry) => sum + entry.amount, 0);
+  const cash = state.feePayments.filter((payment) => inRange(payment.payment_date || payment.paid_at?.slice(0, 10), range)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const discounts = state.feeDiscounts.filter((discount) => range.months.includes(String(discount.billing_month || "").slice(0, 7))).reduce((sum, discount) => sum + Number(discount.amount || 0), 0);
+  const due = state.invoices.filter((invoice) => range.months.includes(invoice.month)).reduce((sum, invoice) => sum + invoiceDue(invoice), 0);
+  const collected = state.invoices.filter((invoice) => range.months.includes(invoice.month)).reduce((sum, invoice) => sum + invoice.paid, 0);
   const active = state.students.filter((student) => student.status === "active").length;
   const inactive = state.students.length - active;
-  els.reportCollection.textContent = formatMoney(cash);
-  els.reportDiscount.textContent = formatMoney(discounts);
+
+  els.reportIncome.textContent = formatMoney(income);
   els.reportExpense.textContent = formatMoney(expense);
-  els.reportDue.textContent = formatMoney(due);
   els.reportNet.textContent = formatMoney(income - expense);
-  els.reportNewStudents.textContent = toNum(newStudents.length);
-  els.reportStudentStatus.textContent = `${toNum(active)} active · ${toNum(inactive)} inactive`;
-  els.reportSummaryText.textContent = `${month}: collected ${formatMoney(cash)}, waived ${formatMoney(discounts)}, with ${formatMoney(due)} still due.`;
-  const entries = state.money.filter((entry) => entry.date?.slice(0, 7) === month);
-  els.reportAccounts.innerHTML = entries.length ? entries.map((entry) => `<div class="compact-item"><div><strong>${escapeHtml(entry.category || "Account entry")}</strong><span>${escapeHtml(entry.date)} · ${escapeHtml(entry.note || entry.type)}</span></div><span class="badge ${entry.type === "income" ? "paid" : "due"}">${entry.type === "income" ? "+" : "−"}${formatMoney(entry.amount)}</span></div>`).join("") : emptyState("No account entries for this month.");
-  els.reportStudents.innerHTML = newStudents.length ? newStudents.map((student) => `<div class="compact-item"><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)} · ${escapeHtml(yearLabel(student.year))}</span></div><span class="badge ${student.status === "active" ? "paid" : "due"}">${student.status === "active" ? "Active" : "Inactive"}</span></div>`).join("") : emptyState("No students admitted this month.");
+  els.reportBankBalance.textContent = formatMoney(bankBalance());
+  els.reportCollection.textContent = formatMoney(cash);
+  els.reportDue.textContent = formatMoney(due);
+  els.reportDiscount.textContent = formatMoney(discounts);
+  els.reportSummaryText.textContent = `${range.label}: fee collection ${formatMoney(cash)}, income ${formatMoney(income)}, expense ${formatMoney(expense)}, due ${formatMoney(due)}.`;
+
+  els.chartReportFee.innerHTML = donutChart([
+    { label: "Collected", value: collected },
+    { label: "Due", value: due },
+  ], `${Math.round((collected / Math.max(1, collected + due)) * 100)}%`);
+  els.chartReportMoney.innerHTML = donutChart([
+    { label: "Income", value: income },
+    { label: "Expense", value: expense },
+  ], `${formatMoney(income - expense)}`);
+  els.chartReportStudents.innerHTML = donutChart([
+    { label: "Active", value: active },
+    { label: "Inactive", value: inactive },
+  ], `${toNum(state.students.length)}`);
+
+  const withDue = state.students
+    .map((student) => ({ student, amount: state.invoices.filter((invoice) => range.months.includes(invoice.month) && invoice.studentId === student.id).reduce((sum, invoice) => sum + invoiceDue(invoice), 0) }))
+    .filter((row) => row.amount > 0)
+    .sort((a, b) => b.amount - a.amount)
+    .slice(0, 8);
+  els.reportStudentDues.innerHTML = withDue.length
+    ? withDue.map(({ student, amount }) => `<div class="compact-item"><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)} · ${escapeHtml(yearLabel(student.year))}</span></div><span class="badge due">${formatMoney(amount)}</span></div>`).join("")
+    : emptyState("No student dues in this period.");
+
+  const openDues = state.dues.filter((d) => !d.paid);
+  const paidDues = state.dues.filter((d) => d.paid);
+  els.reportDues.innerHTML = state.dues.length
+    ? `<div class="dues-summary"><span class="badge due">Open ${formatMoney(openDues.reduce((s, d) => s + d.amount, 0))}</span><span class="badge paid">Paid ${formatMoney(paidDues.reduce((s, d) => s + d.amount, 0))}</span></div>` +
+      state.dues.slice(0, 8).map((d) => `<div class="compact-item"><div><strong>${escapeHtml(d.title)}</strong><span>${escapeHtml(d.date || "-")}</span></div><span class="badge ${d.paid ? "paid" : "due"}">${formatMoney(d.amount)}</span></div>`).join("")
+    : emptyState("No coaching dues recorded.");
+
+  const bankRows = state.bankTx.filter((tx) => inRange(tx.date, range));
+  const deposits = bankRows.filter((tx) => tx.direction === "deposit").reduce((s, tx) => s + tx.amount, 0);
+  const withdrawals = bankRows.filter((tx) => tx.direction === "withdrawal").reduce((s, tx) => s + tx.amount, 0);
+  els.reportBank.innerHTML =
+    `<div class="dues-summary"><span class="badge paid">Deposits ${formatMoney(deposits)}</span><span class="badge due">Withdrawals ${formatMoney(withdrawals)}</span><span class="badge">Balance ${formatMoney(bankBalance())}</span></div>` +
+    (bankRows.length ? bankRows.slice(0, 8).map((tx) => `<div class="compact-item"><div><strong>${tx.direction === "deposit" ? "Deposit" : "Withdrawal"} · ${formatMoney(tx.amount)}</strong><span>${escapeHtml(tx.date || "")}${tx.note ? " · " + escapeHtml(tx.note) : ""}</span></div></div>`).join("") : emptyState("No bank activity in this period."));
 }
+
+document.querySelectorAll("[data-report-period]").forEach((button) => {
+  button.addEventListener("click", () => {
+    reportPeriod = button.dataset.reportPeriod;
+    document.querySelectorAll("[data-report-period]").forEach((item) => item.classList.toggle("active", item === button));
+    els.reportPeriodDate.hidden = reportPeriod === "month";
+    els.reportPeriodMonth.hidden = reportPeriod !== "month";
+    renderReports();
+  });
+});
+els.reportPeriodDate.addEventListener("change", renderReports);
+els.reportPeriodMonth.addEventListener("change", renderReports);
+
+const IDEA_LABELS = ["New", "Approve", "Planning", "On Going", "Completed"];
+
+function renderIdeaChips() {
+  const counts = { All: state.ideas.length };
+  for (const label of IDEA_LABELS) counts[label] = state.ideas.filter((idea) => idea.label === label).length;
+  const chips = ["All", ...IDEA_LABELS];
+  els.ideaLabelChips.innerHTML = chips.map((label) => `<button type="button" class="year-chip${ideaFilter === label ? " active" : ""}" data-idea-filter="${label}" aria-pressed="${ideaFilter === label}">${label} (${counts[label] ?? 0})</button>`).join("");
+  els.ideaLabelChips.querySelectorAll("[data-idea-filter]").forEach((chip) => chip.addEventListener("click", () => {
+    ideaFilter = chip.dataset.ideaFilter;
+    renderIdeaChips();
+    renderIdeas();
+  }));
+}
+
+function renderIdeas() {
+  if (!canView("ideas")) return;
+  renderIdeaChips();
+  const rows = ideaFilter === "All" ? state.ideas : state.ideas.filter((idea) => idea.label === ideaFilter);
+  els.ideaCards.innerHTML = rows.length
+    ? rows.map((idea) => {
+        const labelControl = isAdmin()
+          ? `<label class="idea-label-select"><span class="sr-only">Label</span><select data-idea-label="${idea.id}">${IDEA_LABELS.map((label) => `<option value="${label}"${idea.label === label ? " selected" : ""}>${label}</option>`).join("")}</select></label>`
+          : `<span class="badge ${idea.label === "New" ? "due" : "paid"}">${escapeHtml(idea.label)}</span>`;
+        return `<article class="idea-card">
+          <div class="idea-card-head"><strong>${escapeHtml(idea.title)}</strong>${labelControl}</div>
+          <p>${escapeHtml(idea.idea)}</p>
+          <div class="idea-card-foot">
+            <span>${escapeHtml(idea.createdBy || "—")} · ${escapeHtml(new Date(idea.createdAt).toLocaleDateString("en-GB"))}</span>
+            ${isAdmin() ? `<button type="button" class="small-btn" data-delete-idea="${idea.id}">${t("del")}</button>` : ""}
+          </div>
+        </article>`;
+      }).join("")
+    : emptyState("No ideas yet — add the first one.");
+}
+
+els.ideaForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const title = els.ideaName.value.trim();
+  const body = els.ideaBody.value.trim();
+  if (!title || !body) return;
+  const { error } = await sb.from("ideas").insert({ title, idea: body, label: "New", created_by: currentUser?.id || null });
+  if (error) { fail(error); return; }
+  els.ideaForm.reset();
+  toast("Idea added.");
+  logActivity("Idea added", title);
+  await db.loadIdeas();
+  renderIdeas();
+});
+
+document.addEventListener("change", async (event) => {
+  const select = event.target.closest("[data-idea-label]");
+  if (!select) return;
+  const { error } = await sb.from("ideas").update({ label: select.value }).eq("id", select.dataset.ideaLabel);
+  if (error) { fail(error); return; }
+  toast("Label updated.");
+  await db.loadIdeas();
+  renderIdeas();
+});
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-delete-idea]");
+  if (!button) return;
+  const idea = state.ideas.find((item) => item.id === button.dataset.deleteIdea);
+  if (!idea || !confirmDelete(`Delete idea "${idea.title}"?`)) return;
+  const { error } = await sb.from("ideas").delete().eq("id", idea.id);
+  if (error) { fail(error); return; }
+  toast("Idea deleted.");
+  await db.loadIdeas();
+  renderIdeas();
+});
 
 function renderMoreLinks() {
   document.querySelectorAll("[data-home-view]").forEach((button) => { button.hidden = !canView(button.dataset.homeView); });
   const views = MORE_VIEWS.filter((view) => canView(view));
   els.moreLinks.innerHTML = views.map((view) => `<button class="secondary-btn" type="button" data-more-view="${view}">${escapeHtml(viewTitle(view))}</button>`).join("");
   els.moreLinks.querySelectorAll("[data-more-view]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.moreView, viewTitle(button.dataset.moreView))));
+  if (currentUser) {
+    els.accountBox.innerHTML = `
+      <div class="account-row">
+        <div class="student-avatar" aria-hidden="true">${escapeHtml(currentUser.username.charAt(0).toUpperCase())}</div>
+        <div><strong>${escapeHtml(currentUser.username)}</strong><span>${escapeHtml(roleLabel(currentUser.role))}</span></div>
+      </div>
+      <button id="moreLogoutBtn" class="danger-btn" type="button">Logout</button>`;
+    document.getElementById("moreLogoutBtn")?.addEventListener("click", doLogout);
+  }
 }
-
-els.reportMonth.addEventListener("change", renderReports);
 
 function renderAll() {
   applyBrand();
@@ -2722,6 +2992,7 @@ function renderAll() {
   renderCharts();
   renderReminders();
   renderReports();
+  renderIdeas();
   renderMoreLinks();
 }
 

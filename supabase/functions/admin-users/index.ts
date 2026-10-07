@@ -49,8 +49,10 @@ Deno.serve(async (req) => {
     const email = String(body.email ?? "").trim().toLowerCase();
     const password = String(body.password ?? "");
     const profile = (body.profile ?? {}) as Record<string, unknown>;
+    const role = String(profile.role ?? "viewer");
     if (!email || password.length < 4) return json({ error: "email and 4+ char password required" }, 400);
-    if (String(profile.role) === "admin") return json({ error: "admin role is not assignable" }, 400);
+    const assignable = ["admin", "subadmin", "editor", "viewer", "accountant", "teacher", "student"];
+    if (!assignable.includes(role)) return json({ error: "invalid role" }, 400);
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
       email,

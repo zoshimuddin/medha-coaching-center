@@ -1936,6 +1936,11 @@ td {
 
 @media (max-width: 620px) {
   .content { padding-bottom: 20px; }
+  .panel h3, .panel-header h3 { font-size: 16px; }
+  .panel h4 { font-size: 15px; }
+  body { font-size: 15px; }
+  .badge { font-size: 11.5px; }
+  .compact-item strong { font-size: 15px; }
   .home-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-summary-card { padding: 12px; }
   .home-summary-card strong { font-size: 20px; }
@@ -1948,12 +1953,292 @@ td {
 }
 
 @media print {
-  body * { visibility: hidden !important; }
-  #receiptDialog[open], #receiptDialog[open] * { visibility: visible !important; }
-  #receiptDialog[open] { position: fixed; inset: 0 auto auto 0; width: 58mm; max-width: 58mm; max-height: none; margin: 0; padding: 0; border: 0; border-radius: 0; overflow: visible; background: #fff; box-shadow: none; }
-  #receiptDialog[open] .receipt-actions { display: none !important; }
-  .receipt-paper { width: 58mm; max-width: 58mm; margin: 0; padding: 2mm; font-size: 10pt; }
-  @page { size: 58mm auto; margin: 0; }
+  .app-shell,
+  .mobile-bottom-nav,
+  #bootOverlay,
+  #toast,
+  #discountConfirmDialog,
+  #studentDetailPage,
+  #feeDetailPage {
+    display: none !important;
+  }
+
+  #receiptDialog[open] {
+    position: static;
+    display: block;
+    width: 58mm;
+    max-width: 58mm;
+    max-height: none;
+    margin: 0;
+    padding: 2mm 0;
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+    background: #fff;
+    box-shadow: none;
+  }
+
+  #receiptDialog[open] .receipt-actions {
+    display: none !important;
+  }
+
+  .receipt-paper {
+    width: 54mm;
+    max-width: 54mm;
+    margin: 0 auto;
+    padding: 0;
+    font-size: 10px;
+    line-height: 1.35;
+  }
+
+  .receipt-paper header strong { font-size: 12px; }
+  .receipt-paper dl { gap: 3px 8px; }
+
+  @page {
+    size: 58mm auto;
+    margin: 0;
+  }
+}
+
+/* ---------- detail pages / overlays ---------- */
+
+.page-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--page);
+  padding: 14px 14px calc(24px + env(safe-area-inset-bottom));
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.detail-header h3 { margin: 0; font-size: 20px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.detail-back {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ---------- students polish ---------- */
+
+.student-metrics article { background: var(--accent-softer); border: 1px solid var(--accent-soft); }
+.student-metrics article.metric-active { background: #e5f5e9; border-color: #c9e9d0; }
+.student-metrics article.metric-new { background: #e8f1fc; border-color: #cfe3f8; }
+.student-metrics article.metric-active strong { color: #28803b; }
+.student-metrics article.metric-new strong { color: #1c66ad; }
+
+.status-filter {
+  min-height: 36px;
+  padding: 5px 14px;
+  font-size: 13px;
+}
+
+.student-card.clickable { cursor: pointer; }
+.student-card.clickable:hover { border-color: var(--accent); background: var(--accent-softer); }
+.student-card-side { display: grid; justify-items: end; gap: 6px; margin-left: auto; }
+.student-card-tools { display: flex; gap: 4px; }
+.student-card-tools .icon-action { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.student-card-tools .icon-action svg { width: 18px; height: 18px; }
+.student-card-tools .delete-action { color: var(--danger); }
+.student-card-copy strong { white-space: normal; overflow-wrap: anywhere; }
+.student-card-copy strong.long-name { font-size: 15px; line-height: 1.25; }
+.admitted-line { font-size: 12px; color: var(--muted); }
+
+.contact-link {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  border: 0;
+  cursor: pointer;
+}
+
+.contact-link svg { width: 20px; height: 20px; }
+.contact-link.chat { background: #e2f6e9; color: #1f9d55; }
+.contact-link.call { background: #e5f0fd; color: #1c66ad; }
+.contact-link.guardian { background: #fdeeda; color: #b45309; }
+
+/* ---------- fees polish ---------- */
+
+.fee-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.fee-stats-bar article {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.fee-stats-bar span { color: var(--muted); font-size: 13px; }
+.fee-stats-bar strong { font-size: 20px; }
+.fee-stats-bar .stat-today { background: #e5f5e9; border-color: #c9e9d0; }
+.fee-stats-bar .stat-month { background: var(--accent-softer); border-color: var(--accent-soft); }
+
+.fee-student-copy strong { font-size: 16px; }
+.fee-student-copy span { font-size: 12.5px; }
+.fee-student-card .student-avatar { width: 44px; height: 44px; flex: 0 0 44px; font-size: 18px; }
+
+.fee-detail-page-body { display: grid; gap: 14px; }
+.receipt-tools { display: flex; gap: 6px; }
+.receipt-tools .small-btn { min-height: 34px; padding: 4px 10px; }
+
+/* ---------- accounts ---------- */
+
+.money-today-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.money-today-grid article {
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #e5f5e9;
+}
+
+.money-today-grid article.cost { background: #fdeeed; border-color: #f7d4d0; }
+.money-today-grid article.net { background: var(--accent-softer); border-color: var(--accent-soft); }
+.money-today-grid span { color: var(--muted); font-size: 13px; }
+.money-today-grid strong { font-size: 20px; }
+.money-today-grid article.cost strong { color: var(--danger); }
+
+.money-balance-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  background: #0d2440;
+  color: #ffffff;
+  border: 0;
+  margin-bottom: 14px;
+}
+
+.money-balance-bar span { color: #9fc3ec; }
+.money-balance-bar strong { font-size: 26px; color: #ffffff; }
+.money-balance-bar .muted-note { color: #c7d8eb; }
+
+.entry-type-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--page);
+}
+
+.entry-type-toggle button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font-weight: 700;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.entry-type-toggle button.active { background: #e5f5e9; color: #28803b; }
+.entry-type-toggle button:nth-child(2).active { background: #fdeeed; color: var(--danger); }
+
+/* ---------- reports ---------- */
+
+.period-picker { display: grid; gap: 8px; justify-items: end; }
+.period-chips { display: inline-flex; gap: 4px; padding: 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--page); }
+.period-chips button { min-height: 34px; padding: 4px 16px; border: 0; border-radius: 999px; background: transparent; font-weight: 700; color: var(--muted); cursor: pointer; }
+.period-chips button.active { background: #1c66ad; color: #fff; }
+.report-hero input[type="date"], .report-hero input[type="month"] { max-width: 180px; }
+
+.report-charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 14px 0; }
+.report-chart-card h3 { margin: 0 0 10px; font-size: 15px; }
+.donut-wrap { display: grid; justify-items: center; gap: 10px; }
+.donut { width: min(150px, 100%); }
+.donut svg { width: 100%; height: auto; transform: rotate(-90deg); }
+.donut text { font-size: 15px; font-weight: 800; fill: var(--ink); }
+.donut .donut-sub { font-size: 11px; font-weight: 600; fill: var(--muted); }
+.donut-legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; width: 100%; }
+.donut-legend li { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.donut-legend .dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; }
+
+.dues-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+
+/* ---------- ideas ---------- */
+
+.idea-form { display: grid; gap: 12px; }
+.idea-form textarea { min-height: 74px; resize: vertical; }
+.idea-label-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.idea-cards { display: grid; gap: 12px; }
+.idea-card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); }
+.idea-card p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #33404d; }
+.idea-card-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.idea-card-head strong { font-size: 16px; }
+.idea-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--muted); font-size: 12.5px; }
+.idea-label-select select { min-height: 32px; padding: 4px 8px; font-size: 13px; }
+
+/* ---------- attendance ---------- */
+
+.attendance-filters { flex-wrap: wrap; }
+.year-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.year-chip { min-height: 34px; padding: 5px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-weight: 700; font-size: 13px; color: var(--muted); cursor: pointer; }
+.year-chip.active { background: #1c66ad; border-color: #1c66ad; color: #fff; }
+.attendance-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.attendance-copy span { color: var(--muted); font-size: 13px; }
+.attendance-calls { display: flex; gap: 6px; }
+.attendance-row { align-items: center; }
+.reminder-clear { width: 40px; height: 40px; flex: 0 0 40px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 16px; cursor: pointer; }
+.reminder-clear:hover { background: var(--danger-soft); color: var(--danger); }
+
+/* ---------- more / account ---------- */
+
+.account-box { display: grid; gap: 12px; }
+.account-row { display: flex; align-items: center; gap: 12px; }
+.account-row > div:last-child { display: grid; gap: 2px; }
+.account-row span { color: var(--muted); }
+.more-account-btn { justify-self: start; }
+
+/* ---------- bottom nav svg ---------- */
+
+#mobileBottomNav svg { width: 23px; height: 23px; }
+
+@media (max-width: 620px) {
+  .fee-stats-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .fee-stats-bar article { padding: 10px; }
+  .fee-stats-bar strong { font-size: 17px; }
+  .fee-stats-bar span { font-size: 11.5px; }
+  .money-today-grid { gap: 6px; }
+  .money-today-grid article { padding: 10px; }
+  .money-today-grid strong { font-size: 17px; }
+  .money-balance-bar strong { font-size: 22px; }
+  .report-charts { grid-template-columns: 1fr; }
+  .donut { width: min(140px, 60%); }
+  .page-overlay { padding: 12px 12px calc(20px + env(safe-area-inset-bottom)); }
+  .detail-header h3 { font-size: 17px; }
+  .student-card-tools .icon-action { width: 34px; height: 38px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
