@@ -227,6 +227,15 @@ const STR = {
     wa: "হোয়াটসঅ্যাপ", phPass4: "কম হলেও ৪ অক্ষর",
     day_0: "রবি", day_1: "সোম", day_2: "মঙ্গল", day_3: "বুধ", day_4: "বৃহস্পতি", day_5: "শুক্র", day_6: "শনি",
     rosterTitle: "রোস্টার", takePayment: "পেমেন্ট নাও",
+    scanBtn: "ফর্ম স্ক্যান করে ভরাও",
+    msgScanning: "ফর্ম পড়া হচ্ছে…",
+    msgScanDone: "টা তথ্য ভরে গেছে — দেখে তারপর সেভ করো",
+    msgScanEmpty: "কিছু পড়া যায়নি — হাতে লিখো",
+    msgScanFail: "স্ক্যান করা যায়নি।",
+    msgScanNoFunc: "scan-form function deploy nai — DEPLOY.md দেখো",
+    msgScanImage: "ছবি ফাইল দাও (JPG/PNG)",
+    msgScanUnmatched: "কোর্স নিজে বাছো (অটো ম্যাচ হয়নি):",
+    msgScanSave: "সেভ করার আগে সব দেখে নিয়েছো তো?",
   },
   en: {
     appName: "Medha Coaching Center",
@@ -307,6 +316,15 @@ const STR = {
     wa: "WhatsApp", phPass4: "Min 4 characters",
     day_0: "Sun", day_1: "Mon", day_2: "Tue", day_3: "Wed", day_4: "Thu", day_5: "Fri", day_6: "Sat",
     rosterTitle: "Roster", takePayment: "Take payment",
+    scanBtn: "Scan admission form",
+    msgScanning: "Reading form…",
+    msgScanDone: "fields filled — review before saving",
+    msgScanEmpty: "Nothing readable — fill manually",
+    msgScanFail: "Scan failed.",
+    msgScanNoFunc: "scan-form function not deployed — see DEPLOY.md",
+    msgScanImage: "Use an image file (JPG/PNG)",
+    msgScanUnmatched: "Courses not auto-matched — pick manually:",
+    msgScanSave: "Reviewed everything before saving?",
   },
 };
 
@@ -396,7 +414,7 @@ function tabLabel(id) {
 /* ================= state ================= */
 
 const state = {
-  settings: { coachingName: "মেধা কোচিং সেন্টার", admissionFee: 0, colleges: ["Ramganj Govt College", "Ramganj Model College", "Alia Madrasha"], groups: ["Science", "Humanities", "Business Studies"], logoData: "" },
+  settings: { coachingName: "মেধা কোচিং সেন্টার", admissionFee: 0, colleges: ["Ramganj Govt College", "Ramganj Model College", "Alia Madrasha"], groups: ["Science", "Commerce", "Arts", "Madrasa"], logoData: "" },
   batches: [], courses: [], offerings: [],
   students: [], invoices: [], money: [], dues: [],
   bank: { opening: 0 }, bankTx: [],
@@ -828,11 +846,132 @@ els.waSameBtn.addEventListener("click", () => {
   els.whatsappNumber.value = els.studentPhone.value.trim();
 });
 
+els.scanBtn.addEventListener("click", () => els.scanFileInput.click());
+
+async function downscaleImage(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const maxSide = 1280;
+      const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", 0.72));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+function prefillFromScan(fields) {
+  resetStudentForm();
+  let found = 0;
+  const unmatched = [];
+  if (fields.name) { els.studentName.value = String(fields.name); found++; }
+  if (fields.guardian) { els.guardianName.value = String(fields.guardian); found++; }
+  if (fields.college) {
+    const college = String(fields.college).trim();
+    if (college) {
+      if (!collegesList().includes(college)) {
+        const opt = document.createElement("option");
+        opt.value = college;
+        opt.textContent = college;
+        els.studentCollege.appendChild(opt);
+      }
+      els.studentCollege.value = college;
+      found++;
+    }
+  }
+  const phone = String(fields.whatsapp || "").replace(/\D/g, "");
+  if (phone) {
+    els.whatsappNumber.value = phone;
+    els.studentPhone.value = phone;
+    found++;
+  }
+  if (fields.address) { els.studentAddress.value = String(fields.address); found++; }
+  if (fields.year === "1st year" || fields.year === "2nd year") { els.studentYear.value = fields.year; found++; }
+  const group = String(fields.group || "").trim();
+  if (group) {
+    if (!groupsList().includes(group)) {
+      const opt = document.createElement("option");
+      opt.value = group;
+      opt.textContent = group;
+      els.studentGroup.appendChild(opt);
+    }
+    els.studentGroup.value = group;
+    found++;
+  }
+  for (const c of Array.isArray(fields.courses) ? fields.courses : []) {
+    const row = [...els.studentCoursesBox.querySelectorAll(".course-pick")].find((rowEl) => {
+      return rowEl.querySelector("input[type='checkbox']").value === c.courseId;
+    });
+    if (row) {
+      const box = row.querySelector("input[type='checkbox']");
+      const feeInput = row.querySelector("input[type='number']");
+      const course = state.courses.find((course) => course.id === c.courseId);
+      box.checked = true;
+      feeInput.disabled = false;
+      feeInput.value = course ? Number(course.fee || 0) : 0;
+      row.classList.add("picked");
+      found++;
+    } else if (!c.courseId && c.label) {
+      unmatched.push(c.label);
+    }
+  }
+  const drop = els.studentCoursesBox.closest("details");
+  if (drop) drop.open = true;
+  switchView("students", viewTitle("students"));
+  return { found, unmatched };
+}
+
+els.scanFileInput.addEventListener("change", async () => {
+  const file = els.scanFileInput.files[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) { toast(t("msgScanImage")); return; }
+  els.scanBtn.disabled = true;
+  toast(t("msgScanning"));
+  try {
+    const imageData = await downscaleImage(file);
+    const { data, error } = await sb.functions.invoke("scan-form", {
+      body: {
+        image: imageData,
+        mime: "image/jpeg",
+        courses: state.courses.map((c) => ({ id: c.id, name: c.name })),
+      },
+    });
+    if (error) throw error;
+    const { found, unmatched } = prefillFromScan(data?.fields || {});
+    if (found > 0) {
+      toast(`${toNum(found)} ${t("msgScanDone")}${unmatched.length ? ` — ${t("msgScanUnmatched")} ${unmatched.join(", ")}` : ""}`);
+    } else {
+      toast(t("msgScanEmpty"));
+    }
+  } catch (err) {
+    if (/not found|404|non-2xx|failed to fetch/i.test(err?.message || "")) {
+      toast(t("msgScanNoFunc"));
+      console.warn("scan-form not deployed:", err);
+    } else {
+      fail(err);
+    }
+  } finally {
+    els.scanBtn.disabled = false;
+    els.scanFileInput.value = "";
+  }
+});
+
 function collegesList() {
   return state.settings.colleges.length ? state.settings.colleges : ["Ramganj Govt College", "Ramganj Model College", "Alia Madrasha"];
 }
 function groupsList() {
-  return state.settings.groups.length ? state.settings.groups : ["Science", "Humanities", "Business Studies"];
+  return state.settings.groups.length ? state.settings.groups : ["Science", "Commerce", "Arts", "Madrasa"];
 }
 
 function renderStudentOptions() {
@@ -2428,7 +2567,7 @@ els.seedDataBtn.addEventListener("click", async () => {
     await push("students", [
       { id: s1, name: "Farhan Ahmed", phone: "01710000001", guardian: "", guardian_phone: "01710000011", whatsapp: "01710000001", college: "Ramganj Govt College", year_level: "1st year", group_name: "Science", paid: 1500, status: "active" },
       { id: s2, name: "Nusrat Jahan", phone: "01710000002", guardian: "", guardian_phone: "01710000012", whatsapp: "01710000002", college: "Ramganj Model College", year_level: "2nd year", group_name: "Science", paid: 5000, status: "active" },
-      { id: s3, name: "Tanvir Hasan", phone: "01710000003", guardian: "", guardian_phone: "01710000013", whatsapp: "01710000003", college: "Alia Madrasha", year_level: "1st year", group_name: "Humanities", paid: 1800, status: "active" },
+      { id: s3, name: "Tanvir Hasan", phone: "01710000003", guardian: "", guardian_phone: "01710000013", whatsapp: "01710000003", college: "Alia Madrasha", year_level: "1st year", group_name: "Arts", paid: 1800, status: "active" },
     ]);
     await push("enrollments", [
       { student_id: s1, course_id: courseA, fee: 2000 },

@@ -170,7 +170,11 @@
           <section id="students" class="view">
             <div class="work-grid">
               <form id="studentForm" class="panel form-panel">
-                <div class="panel-header"><h3 id="studentFormTitle">নতুন শিক্ষার্থী</h3></div>
+                <div class="panel-header">
+                  <h3 id="studentFormTitle">নতুন শিক্ষার্থী</h3>
+                  <button id="scanBtn" class="small-btn" type="button" data-i18n="scanBtn">ফর্ম স্ক্যান করে ভরাও</button>
+                  <input id="scanFileInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
+                </div>
                 <label>
                   <span data-i18n="studentName">শিক্ষার্থীর নাম *</span>
                   <input id="studentName" type="text" placeholder="যেমন: Farhan Ahmed" data-i18n-ph="studentNamePh" required maxlength="80" />

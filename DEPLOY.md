@@ -42,7 +42,24 @@ safe thake.
 3. Na korleo cholbe — app e fallback ache (browser signUp), kintu deploy
    korle nirdorotoki bhalo thakbe.
 
-## 3. Hostinger e upload
+## 3. Admission Form Scan (camera → auto-fill)
+
+Student entry te camera diye admission form er photo tule scan korle form er
+field gulo auto-fill hoy (Gemini AI diye, Bangla handwriting o porukha jay).
+
+1. **Gemini API key nio (free)**: `aistudio.google.com` > Get API key >
+   Create API key (Google account e free tier ache).
+2. Supabase dashboard > **Edge Functions** > create function nam dia
+   `scan-form` > `supabase/functions/scan-form/index.ts` er content paste
+   kore **Deploy** koro.
+3. **Edge Functions > Secrets** e add koro: `GEMINI_API_KEY` = tomar Gemini key.
+4. App e: Students > **"ফর্ম স্ক্যান করে ভরাও"** button > form er photo tulle dao >
+   AI fields bhore dibe > tumi dekhe-mila kore **Save** koro.
+
+Note: scan khali prefill — সেভ করার আগে review kora joruri (AI bhul korte pare).
+Best result: form ta samne theke, bhalo alo-te, puro form frame-e tule nao.
+
+## 4. Hostinger e upload
 
 1. `hostinger-deploy.zip` ready ache (3 file: index.html, app.js, styles.css —
    expansion version).
@@ -52,7 +69,7 @@ safe thake.
 
 Subdomain chaile: Domains > Subdomains theke banao, oi folder e zip upload.
 
-## 4. Purano browser data (localStorage backup) niye asha
+## 5. Purano browser data (localStorage backup) niye asha
 
 Age jodi purano version e (browser e) data thako:
 

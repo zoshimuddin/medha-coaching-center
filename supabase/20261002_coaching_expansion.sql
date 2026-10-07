@@ -24,7 +24,7 @@ create table if not exists public.coaching_settings (
   logo_path text,
   admission_fee numeric(12,2) not null default 0 check (admission_fee >= 0),
   colleges jsonb not null default '["Ramganj Govt College","Ramganj Model College","Alia Madrasha"]'::jsonb,
-  groups jsonb not null default '["Science","Humanities","Business Studies"]'::jsonb,
+  groups jsonb not null default '["Science","Commerce","Arts","Madrasa"]'::jsonb,
   updated_at timestamptz not null default now()
 );
 insert into public.coaching_settings (id) values (true) on conflict (id) do nothing;
