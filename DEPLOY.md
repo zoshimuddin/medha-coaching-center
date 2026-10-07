@@ -3,21 +3,19 @@
 App ekhon **Supabase-connected** — login, data, shob ekjon user er jonno
 same live database e thake. localStorage ar nei.
 
-## 1. Supabase side setup (ekbar)
+## 1. Supabase setup
 
-1. Supabase project ready (ache) — base `supabase/schema.sql` SQL Editor e
-   already run kora (ache).
-2. **NOTUN EXPANSION SCHEMA RUN KORO** — `supabase/20261002_coaching_expansion.sql`
-   er full content SQL Editor > New query > Run. Eta additive — purano
-   data muche na. Billing (mash onujayi), schedule, class-attendance,
-   teacher pay, bank, settings ar security policies toiri kore.
-   Fresh project hole: age `supabase/schema.sql`, tarpor expansion.
-3. **Authentication > Sign In / Providers > Email > "Confirm email" OFF koro**
-   — nahole app theke notun user banate giye email confirmation ar rate
-   limit e atke jabe.
-4. Tomar nijer admin account: **Authentication > Users > Add user**
-   (tomar email + password, auto confirm).
-5. User list theke tar **UID** copy kore SQL Editor e ei query chalao (1 bar):
+1. Run `supabase/schema.sql` in the Supabase SQL Editor if the base schema
+   has not already been installed.
+2. Run `supabase/20261002_coaching_expansion.sql` to add monthly billing,
+   schedules, attendance, teacher pay, bank, settings, and security policies.
+3. Run `supabase/20261007_student_fees_reports.sql` after the expansion
+   migration. It backfills student numbers and admission dates and adds the
+   new student, discount, receipt, and payment functions.
+4. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+   off if users should be created without email confirmation.
+5. Create the owner account in **Authentication > Users > Add user** and copy
+   its UID. Run this once in the SQL Editor:
 
 ```sql
 insert into profiles (id, username, role, tabs, money_edit)
@@ -42,64 +40,57 @@ safe thake.
 3. Na korleo cholbe — app e fallback ache (browser signUp), kintu deploy
    korle nirdorotoki bhalo thakbe.
 
-## 3. Admission Form Scan (camera → auto-fill)
+## 3. Admission form scanning
 
-Student entry te camera diye admission form er photo tule scan korle form er
-field gulo auto-fill hoy (Gemini AI diye, Bangla handwriting o porukha jay).
+The **Scan admission form** action can prefill student fields from a photo.
 
-1. **Gemini API key nio (free)**: `aistudio.google.com` > Get API key >
-   Create API key (Google account e free tier ache).
-2. Supabase dashboard > **Edge Functions** > create function nam dia
-   `scan-form` > `supabase/functions/scan-form/index.ts` er content paste
-   kore **Deploy** koro.
-3. **Edge Functions > Secrets** e add koro: `GEMINI_API_KEY` = tomar Gemini key.
-4. App e: Students > **"ফর্ম স্ক্যান করে ভরাও"** button > form er photo tulle dao >
-   AI fields bhore dibe > tumi dekhe-mila kore **Save** koro.
+1. Create a Gemini API key in Google AI Studio.
+2. In Supabase **Edge Functions**, deploy `supabase/functions/scan-form/index.ts`
+   as `scan-form`.
+3. Add `GEMINI_API_KEY` under **Edge Functions > Secrets**.
+4. In **Students > Add student**, choose **Scan admission form**, select or
+   capture a photo, review the prefilled fields, then save.
 
-Note: scan khali prefill — সেভ করার আগে review kora joruri (AI bhul korte pare).
-Best result: form ta samne theke, bhalo alo-te, puro form frame-e tule nao.
+Scanning only prefills the form. Review every field before saving; clear,
+well-lit, front-facing photos produce the best results.
 
-## 4. Hostinger e upload
+## 4. Deploy the website
 
-1. `hostinger-deploy.zip` ready ache (3 file: index.html, app.js, styles.css —
-   expansion version).
-2. `hpanel.hostinger.com` > File Manager > `public_html`.
-3. Purano 3 file delete koro, zip upload > **Extract**.
-4. Domain e dhoko — login page asbe. Admin email + password diye login.
+The Hostinger site deploys from the GitHub repository. Commit and push changes
+to the configured branch; do not upload or regenerate `hostinger-deploy.zip`.
+The `.htaccess` file disables caching for HTML, JavaScript, and CSS so Git
+Deploy changes take effect without a manual archive upload.
 
-Subdomain chaile: Domains > Subdomains theke banao, oi folder e zip upload.
+## 5. Import legacy browser data
 
-## 5. Purano browser data (localStorage backup) niye asha
+If you still have data in an old browser version:
 
-Age jodi purano version e (browser e) data thako:
-
-1. Purano version khule **Backup download** nao (sidebar > Backup & Demo).
-2. Notun version e login kore **Backup upload** koro — students/courses/
-   batches/enrollments/money/dues live database e chole jabe.
-3. **Joruri:** purano backup er shikder student e year (1st/2nd) ar group
-   nai — import er por students edit kore oi duita field puro koro. Eta
-   chara attendance/schedule e oi shikder kothao dekha jabe na.
-4. Purano payment gulo mash-onujayi allocate kora jay na — import e
-   current mash er invoice er sathe paid hisebe jog hobe.
+1. In the old version, download a backup from **Account & tools**.
+2. In the new version, sign in and upload the backup. Students, courses,
+   batches, enrollments, money entries, and dues are imported.
+3. Review imported students and fill in any missing year/group details required
+   for attendance and schedules. Existing database students get admission dates
+   from `created_at` when the migration runs.
+4. Legacy payments cannot be reliably allocated to historical billing months;
+   review their imported invoice balances after the import.
 
 ## Login
 
-- Login hocche **email + password** diye (Supabase Auth).
-- Password bhule gele: login page er "পাসওয়ার্ড ভুলে গেছো?" — email likhe chapo.
+- Sign in with email and password through Supabase Auth.
+- Use **Forgot password?** on the login page if needed.
 
 ## Roles
 
-| Role | Ki dekhbe |
+| Role | Access |
 |---|---|
-| admin | Sob + Settings + History + user manage + teacher pay |
-| editor | Students/courses/hajira/fees (admin section chara) |
-| viewer | Shudhu dekhe, edit pare na |
-| accountant | Dashboard + hisab (money + bank + dues) entry |
-| teacher | Shudhu assigned class er hajira; student info default luki |
-| student | Dashboard (data na) |
+| admin | All sections, user management, reports, and teacher pay |
+| editor | Students, courses, attendance, and fees |
+| viewer | Read-only access to assigned sections |
+| accountant | Accounts, fees, and related finance tools |
+| teacher | Assigned class attendance; student details are restricted by default |
+| student | Student dashboard |
 
-Teacher student field dhekhte hole (phone/whatsapp/guardian/guardian phone/
-address): Settings > User > field grants tick koro.
+Admins can grant teachers access to specific student fields in **Settings > User management**.
 
 ## Free tier note
 

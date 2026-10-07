@@ -1,19 +1,19 @@
 <!doctype html>
-<html lang="bn">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>মেধা কোচিং সেন্টার ম্যানেজার</title>
-    <link rel="stylesheet" href="./styles.css?v=3" />
+    <title>Medha Coaching Center Manager</title>
+    <link rel="stylesheet" href="./styles.css?v=4" />
   </head>
   <body>
     <div id="loginView" class="login-wrap" hidden>
       <form id="loginForm" class="login-card panel">
         <div class="brand brand-center">
           <img id="loginLogo" class="brand-logo" alt="" hidden />
-          <div id="loginMark" class="brand-mark">মে</div>
+          <div id="loginMark" class="brand-mark">M</div>
           <div>
-            <h1 id="loginBrandName">মেধা কোচিং সেন্টার</h1>
+            <h1 id="loginBrandName">Medha Coaching Center</h1>
             <p data-i18n="managerLogin">ম্যানেজার লগইন</p>
           </div>
         </div>
@@ -34,33 +34,28 @@
 
     <div id="appShell" class="app-shell" hidden>
       <header class="mobile-bar">
-        <button id="menuToggle" class="menu-btn" type="button" aria-label="মেনু">☰</button>
         <div class="mobile-brand">
           <img id="brandLogoMobile" class="brand-logo" alt="" hidden />
-          <div id="brandMarkMobile" class="brand-mark">মে</div>
-          <strong id="brandNameMobile">মেধা কোচিং সেন্টার</strong>
+          <div id="brandMarkMobile" class="brand-mark">M</div>
+          <strong id="brandNameMobile">Medha Coaching Center</strong>
+          <span id="mobilePageTitle">Home</span>
         </div>
-        <button id="langToggleMobile" class="menu-btn menu-lang" type="button">EN</button>
       </header>
       <aside id="sidebar" class="sidebar" aria-label="Main navigation">
         <div class="brand brand-desktop">
           <img id="brandLogo" class="brand-logo" alt="" hidden />
-          <div id="brandMark" class="brand-mark">মে</div>
+          <div id="brandMark" class="brand-mark">M</div>
           <div>
-            <h1 id="brandName">মেধা কোচিং সেন্টার</h1>
+            <h1 id="brandName">Medha Coaching Center</h1>
             <p data-i18n="manager">ম্যানেজার</p>
           </div>
         </div>
-        <nav id="mainNav" class="nav-tabs" aria-label="Sections">
-          <button class="nav-tab" data-view="dashboard" type="button" data-i18n="m_dashboard">ড্যাশবোর্ড</button>
-          <button class="nav-tab" data-view="students" type="button" data-i18n="m_students">শিক্ষার্থী</button>
-          <button class="nav-tab" data-view="courses" type="button" data-i18n="m_courses">কোর্স ও শিডিউল</button>
-          <button class="nav-tab" data-view="attendance" type="button" data-i18n="m_attendance">হাজিরা</button>
-          <button class="nav-tab" data-view="fees" type="button" data-i18n="m_fees">ফি</button>
-          <button class="nav-tab" data-view="money" type="button" data-i18n="m_money">হিসাব</button>
-          <button class="nav-tab" data-view="payroll" type="button" data-i18n="m_payroll">শিক্ষক পেমেন্ট</button>
-          <button class="nav-tab" data-view="settings" type="button" data-i18n="m_settings">সেটিংস</button>
-          <button class="nav-tab" data-view="activity" type="button" data-i18n="m_activity">হিস্ট্রি</button>
+        <nav id="mainNav" class="nav-tabs" aria-label="Primary sections">
+          <button class="nav-tab" data-view="dashboard" type="button">Home</button>
+          <button class="nav-tab" data-view="reminders" type="button">Reminder</button>
+          <button class="nav-tab" data-view="students" type="button">Students</button>
+          <button class="nav-tab" data-view="fees" type="button">Fees</button>
+          <button class="nav-tab" data-view="more" type="button">More</button>
         </nav>
         <div class="sidebar-footer">
           <div class="user-box">
@@ -69,11 +64,10 @@
           </div>
           <div id="adminTools" class="admin-tools">
             <button id="adminToolsToggle" class="admin-toggle" type="button" aria-expanded="false">
-              <span data-i18n="backupDemo">⚙ ব্যাকআপ ও ডেমো</span>
+              <span>Admin tools</span>
               <span class="admin-chevron">▾</span>
             </button>
             <div id="adminToolsBody" class="admin-tools-body" hidden>
-              <button id="seedDataBtn" class="secondary-btn" type="button" data-i18n="demoData">ডেমো ডেটা লোড করো</button>
               <button id="exportDataBtn" class="secondary-btn" type="button" data-i18n="backupDown">ব্যাকআপ ডাউনলোড</button>
               <label class="secondary-btn file-btn" for="importFileInput" data-i18n="backupUp">ব্যাকআপ আপলোড</label>
               <input id="importFileInput" type="file" accept="application/json" hidden />
@@ -88,10 +82,9 @@
           <header class="topbar">
             <div>
               <p class="eyebrow" data-i18n="eyebrow">কোচিং ওয়ার্কস্পেস</p>
-              <h2 id="pageTitle">ড্যাশবোর্ড</h2>
+              <h2 id="pageTitle">Home</h2>
             </div>
             <div class="topbar-side">
-              <button id="langToggle" class="lang-btn" type="button">English</button>
               <div class="today-card">
                 <span data-i18n="todayDate">আজকের তারিখ</span>
                 <strong id="todayLabel"></strong>
@@ -101,6 +94,12 @@
 
           <!-- ============ DASHBOARD ============ -->
           <section id="dashboard" class="view">
+            <section class="home-finance-panel panel">
+              <div class="home-finance-highlight"><div><span>Total due</span><strong id="homeTotalDue">৳0</strong></div><div><span>Total collection</span><strong id="homeTotalCollection">৳0</strong></div></div>
+              <div class="home-periods"><div><span>Today</span><strong id="homeDailyCollection">৳0</strong></div><div><span>This month</span><strong id="homeMonthlyCollection">৳0</strong></div><div><span>This year</span><strong id="homeYearlyCollection">৳0</strong></div></div>
+            </section>
+            <div class="home-summary-grid"><article class="home-summary-card"><strong id="homeStudentCount">0</strong><span>Total students</span></article><article class="home-summary-card"><strong id="homeExpenseCount">৳0</strong><span>This month’s expenses</span></article><article class="home-summary-card"><strong id="homeBirthdayCount">0</strong><span>Today’s birthdays</span></article><article class="home-summary-card"><strong id="homeAbsentCount">0</strong><span>Absent today</span></article></div>
+            <div class="home-shortcuts"><button type="button" data-home-view="courses">Courses & batches</button><button type="button" data-home-view="attendance">Attendance</button><button type="button" data-home-view="reminders">Reminders</button><button type="button" data-home-view="reports">Reports</button></div>
             <div class="metric-grid">
               <article class="metric metric-blue" data-goto="students" tabindex="0" role="button">
                 <span class="metric-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
@@ -166,115 +165,88 @@
             </div>
           </section>
 
+          <section id="reminders" class="view">
+            <section class="panel">
+              <div class="panel-header"><div><h3>Today’s reminders</h3><p class="muted-note" id="reminderDateLabel"></p></div></div>
+              <div id="reminderRows" class="reminder-list" aria-live="polite"></div>
+            </section>
+          </section>
+
+          <section id="reports" class="view">
+            <section class="report-hero panel">
+              <div class="panel-header"><div><h3>Monthly reports</h3><p id="reportSummaryText">Monthly collection, expenses, and student activity.</p></div><label><span>Report month</span><input id="reportMonth" type="month" /></label></div>
+              <div class="report-overview"><div><span>Accounts net</span><strong id="reportNet">৳0</strong></div><div><span>Collection</span><strong id="reportCollection">৳0</strong></div><div><span>Expenses</span><strong id="reportExpense">৳0</strong></div><div><span>Outstanding due</span><strong id="reportDue">৳0</strong></div></div>
+            </section>
+            <div class="report-metrics"><article class="panel"><span>Discounts waived</span><strong id="reportDiscount">৳0</strong></article><article class="panel"><span>New students this month</span><strong id="reportNewStudents">0</strong></article><article class="panel"><span>Active / inactive</span><strong id="reportStudentStatus">0 / 0</strong></article></div>
+            <section class="panel panel-gap"><div class="panel-header"><h3>Account activity</h3></div><div id="reportAccounts" class="compact-list"></div></section>
+            <section class="panel panel-gap"><div class="panel-header"><h3>Student activity</h3></div><div id="reportStudents" class="compact-list"></div></section>
+          </section>
+
+          <section id="more" class="view">
+            <section class="panel"><div class="panel-header"><h3>More sections</h3></div><div id="moreLinks" class="more-links"></div><button id="moreAccountBtn" class="secondary-btn more-account-btn" type="button">Account & tools</button></section>
+          </section>
+
           <!-- ============ STUDENTS ============ -->
           <section id="students" class="view">
-            <div class="work-grid">
-              <form id="studentForm" class="panel form-panel">
-                <div class="panel-header">
-                  <h3 id="studentFormTitle">নতুন শিক্ষার্থী</h3>
-                  <button id="scanBtn" class="small-btn" type="button" data-i18n="scanBtn">ফর্ম স্ক্যান করে ভরাও</button>
-                  <input id="scanFileInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
-                </div>
-                <label>
-                  <span data-i18n="studentName">শিক্ষার্থীর নাম *</span>
-                  <input id="studentName" type="text" placeholder="যেমন: Farhan Ahmed" data-i18n-ph="studentNamePh" required maxlength="80" />
-                </label>
-                <label>
-                  <span data-i18n="mobile">মোবাইল নম্বর *</span>
-                  <input id="studentPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" required />
-                </label>
-                <div class="field-with-btn">
-                  <label>
-                    <span data-i18n="whatsapp">হোয়াটসঅ্যাপ নম্বর</span>
-                    <input id="whatsappNumber" type="tel" placeholder="01XXXXXXXXX" maxlength="15" />
-                  </label>
-                  <button id="waSameBtn" class="small-btn same-btn" type="button" title="মোবাইল নম্বর থেকে কপি">⇄</button>
-                </div>
-                <label>
-                  <span data-i18n="guardian">অভিভাবক</span>
-                  <input id="guardianName" type="text" maxlength="80" />
-                </label>
-                <label>
-                  <span data-i18n="guardianPhone">অভিভাবকের মোবাইল</span>
-                  <input id="guardianPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" />
-                </label>
-                <label>
-                  <span data-i18n="address">ঠিকানা</span>
-                  <input id="studentAddress" type="text" maxlength="200" />
-                </label>
-                <label>
-                  <span data-i18n="college">কলেজ *</span>
-                  <select id="studentCollege" required></select>
-                </label>
-                <div class="form-row">
-                  <label>
-                    <span data-i18n="yearLevel">শ্রেণি *</span>
-                    <select id="studentYear" required>
-                      <option value="1st year" data-i18n="year1">১ম বর্ষ</option>
-                      <option value="2nd year" data-i18n="year2">২য় বর্ষ</option>
-                    </select>
-                  </label>
-                  <label>
-                    <span data-i18n="groupLabel">গ্রুপ *</span>
-                    <select id="studentGroup" required></select>
-                  </label>
-                </div>
-                <label>
-                  <span data-i18n="batch">ব্যাচ</span>
-                  <select id="studentBatch"></select>
-                </label>
-                <details class="course-drop">
-                  <summary data-i18n="pickCourses">কোর্স / প্যাকেজ বাছাই করো *</summary>
-                  <div id="studentCoursesBox" class="course-pick-box"></div>
-                </details>
-                <div class="admission-box">
-                  <p class="admission-note"><span data-i18n="admissionFeeLabel">ভর্তি ফি (ফিক্সড)</span>: <strong id="admissionFeeNote">৳0</strong></p>
-                  <label>
-                    <span data-i18n="admissionPaid">ভর্তি ফি প্রদান *</span>
-                    <input id="admissionPaid" type="number" min="0" step="1" required />
-                  </label>
-                </div>
-                <div class="form-actions">
-                  <button id="studentSubmitBtn" class="primary-btn" type="submit">শিক্ষার্থী যোগ করো</button>
-                  <button id="studentCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
-                </div>
-              </form>
-
-              <section class="panel table-panel">
-                <div class="panel-header">
-                  <h3 data-i18n="m_students">শিক্ষার্থী</h3>
-                  <div class="inline-tools filter-tools">
-                    <input id="studentSearch" class="search-input" type="search" data-i18n-ph="searchStudent" placeholder="নাম বা নম্বর দিয়ে খোঁজো" />
-                    <select id="studentCollegeFilter"></select>
-                    <select id="studentYearFilter"></select>
-                  </div>
-                </div>
-                <div class="table-wrap">
-                  <table class="table-students">
-                    <thead>
-                      <tr>
-                        <th data-i18n="thName">নাম</th>
-                        <th data-i18n="thContact">যোগাযোগ</th>
-                        <th data-i18n="thCollege">কলেজ</th>
-                        <th data-i18n="thYear">শ্রেণি</th>
-                        <th data-i18n="thGroup">গ্রুপ</th>
-                        <th data-i18n="thCourse">কোর্স</th>
-                        <th data-i18n="thFeeStatus">ফি অবস্থা</th>
-                        <th class="col-action" data-i18n="thAction">অ্যাকশন</th>
-                      </tr>
-                    </thead>
-                    <tbody id="studentRows"></tbody>
-                  </table>
-                </div>
-              </section>
+            <div class="student-metrics" aria-label="Student summary">
+              <article><strong id="studentTotalCount">0</strong><span>Total</span></article>
+              <article><strong id="studentActiveCount">0</strong><span>Active</span></article>
+              <article><strong id="studentNewCount">0</strong><span>New this month</span></article>
             </div>
+            <section class="panel student-tools">
+              <div class="student-status-filter" role="group" aria-label="Filter students by status">
+                <button class="status-filter active" type="button" data-student-status="active" aria-pressed="true">Active</button>
+                <button class="status-filter" type="button" data-student-status="inactive" aria-pressed="false">Inactive</button>
+              </div>
+              <label class="student-search-label">
+                <span class="sr-only">Search students</span>
+                <input id="studentSearch" class="search-input" type="search" placeholder="Search name, student ID, or mobile" />
+              </label>
+              <div id="studentExtraFilters" class="inline-tools filter-tools" hidden>
+                <select id="studentCollegeFilter" aria-label="Filter by college"></select>
+                <select id="studentYearFilter" aria-label="Filter by year"></select>
+              </div>
+              <button id="showStudentFormBtn" class="primary-btn" type="button">Add student</button>
+            </section>
+            <form id="studentForm" class="panel form-panel student-form" hidden>
+              <div class="panel-header">
+                <h3 id="studentFormTitle">New student</h3>
+                <button id="scanBtn" class="small-btn" type="button">Scan admission form</button>
+                <input id="scanFileInput" type="file" accept="image/jpeg,image/png,image/webp" capture="environment" hidden />
+              </div>
+              <p id="studentIdDisplay" class="student-id-display" hidden></p>
+              <label><span>Student name *</span><input id="studentName" type="text" placeholder="e.g. Farhan Ahmed" required maxlength="80" /></label>
+              <div class="form-row">
+                <label><span>Gender</span><select id="studentGender"><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
+                <label><span>Birthday</span><input id="studentBirthday" type="date" /></label>
+              </div>
+              <div class="form-row">
+                <label><span>Admission date *</span><input id="studentAdmissionDate" type="date" required /></label>
+                <label id="studentStatusWrap" hidden><span>Status</span><select id="studentStatus"><option value="active">Active</option><option value="inactive">Inactive</option></select></label>
+              </div>
+              <label><span>Mobile number *</span><input id="studentPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" required /></label>
+              <div class="field-with-btn"><label><span>WhatsApp number</span><input id="whatsappNumber" type="tel" placeholder="01XXXXXXXXX" maxlength="15" /></label><button id="waSameBtn" class="small-btn same-btn" type="button" title="Copy mobile number">⇄</button></div>
+              <label><span>Guardian</span><input id="guardianName" type="text" maxlength="80" /></label>
+              <label><span>Guardian mobile</span><input id="guardianPhone" type="tel" placeholder="01XXXXXXXXX" maxlength="15" /></label>
+              <label><span>Address</span><input id="studentAddress" type="text" maxlength="200" /></label>
+              <label><span>College *</span><select id="studentCollege" required></select></label>
+              <div class="form-row">
+                <label><span>Year *</span><select id="studentYear" required><option value="1st year">1st year</option><option value="2nd year">2nd year</option></select></label>
+                <label><span>Group *</span><select id="studentGroup" required></select></label>
+              </div>
+              <label><span>Batch</span><select id="studentBatch"></select></label>
+              <details class="course-drop"><summary>Courses / packages *</summary><div id="studentCoursesBox" class="course-pick-box"></div></details>
+              <div class="admission-box"><p class="admission-note">Admission fee: <strong id="admissionFeeNote">৳0</strong></p><label><span>Admission fee paid *</span><input id="admissionPaid" type="number" min="0" step="1" required /></label></div>
+              <div class="form-actions"><button id="studentSubmitBtn" class="primary-btn" type="submit">Add student</button><button id="studentCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button></div>
+            </form>
+            <section id="studentCards" class="student-cards" aria-live="polite"></section>
           </section>
 
           <!-- ============ COURSES & SCHEDULES ============ -->
           <section id="courses" class="view">
             <div class="work-grid">
               <form id="courseForm" class="panel form-panel">
-                <div class="panel-header"><h3 id="courseFormTitle">নতুন কোর্স / প্যাকেজ</h3></div>
+                <div class="panel-header"><h3 id="courseFormTitle">New course / package</h3></div>
                 <label>
                   <span data-i18n="courseName">নাম *</span>
                   <input id="courseName" type="text" required maxlength="100" />
@@ -295,8 +267,8 @@
                   <input id="courseDuration" type="text" maxlength="140" />
                 </label>
                 <div class="form-actions">
-                  <button id="courseSubmitBtn" class="primary-btn" type="submit">যোগ করো</button>
-                  <button id="courseCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
+                  <button id="courseSubmitBtn" class="primary-btn" type="submit">Add course</button>
+                  <button id="courseCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button>
                 </div>
               </form>
 
@@ -355,7 +327,7 @@
                 </div>
                 <div class="form-actions">
                   <button id="offeringSubmitBtn" class="primary-btn" type="submit" data-i18n="addSchedule">শিডিউল যোগ করো</button>
-                  <button id="offeringCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
+                  <button id="offeringCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button>
                 </div>
               </form>
               <div id="offeringsList" class="compact-list panel-gap"></div>
@@ -382,7 +354,7 @@
             </section>
             <section class="panel panel-gap" id="rosterPanel" hidden>
               <div class="panel-header">
-                <h3 id="rosterTitle">রোস্টার</h3>
+                <h3 id="rosterTitle">Roster</h3>
                 <span id="rosterHeldBadge" class="badge"></span>
               </div>
               <div id="attendanceActions" class="attendance-actions">
@@ -403,35 +375,18 @@
               </div>
               <label class="fee-scope-label"><span data-i18n="fMonth">মাস</span><input id="feeMonth" type="month" /></label>
             </section>
-            <section class="panel table-panel panel-gap">
+            <section class="panel fee-list-panel panel-gap">
               <div class="panel-header">
-                <h3 data-i18n="feeTracking">ফি-এর হিসাব</h3>
+                <h3>Student fees</h3>
                 <div class="inline-tools filter-tools">
-                  <input id="feeSearch" class="search-input" type="search" data-i18n-ph="searchStudent" placeholder="নাম বা নম্বর দিয়ে খোঁজো" />
-                  <select id="feeFilter">
-                    <option value="all" data-i18n="fAllStudents">সকল শিক্ষার্থী</option>
-                    <option value="due" data-i18n="fDueOnly">শুধু বকেয়া</option>
-                    <option value="paid" data-i18n="fPaidOnly">শুধু পরিশোধ</option>
-                  </select>
+                  <input id="feeSearch" class="search-input" type="search" placeholder="Search name or student ID" aria-label="Search fee records" />
+                  <select id="feeFilter" aria-label="Filter fees"><option value="all">All students</option><option value="due">Due only</option><option value="paid">Paid only</option></select>
                 </div>
               </div>
-              <div class="table-wrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th data-i18n="thStudent">শিক্ষার্থী</th>
-                      <th data-i18n="thCourse">কোর্স (মাসিক ফি)</th>
-                      <th data-i18n="thPaid">দিয়েছে</th>
-                      <th data-i18n="thDue">বকেয়া</th>
-                      <th class="col-action" data-i18n="thAction">অ্যাকশন</th>
-                    </tr>
-                  </thead>
-                  <tbody id="feeRows"></tbody>
-                </table>
-              </div>
+              <div id="feeRows" class="fee-student-list" aria-live="polite"></div>
             </section>
             <section class="panel panel-gap">
-              <div class="panel-header"><h3 data-i18n="recentPayments">শেষ পেমেন্টগুলো</h3></div>
+              <div class="panel-header"><h3>Recent collections</h3></div>
               <div id="paymentHistory" class="compact-list"></div>
             </section>
           </section>
@@ -556,7 +511,7 @@
                 <form id="dueForm" class="panel form-panel due-form">
                   <label>
                     <span data-i18n="dueTitleStar">কী বাকি? *</span>
-                    <input id="dueTitle" type="text" maxlength="80" placeholder="যেমন: ঘর ভাড়া" required />
+                    <input id="dueTitle" type="text" maxlength="80" placeholder="e.g. Rent" required />
                   </label>
                   <div class="due-form-row">
                     <label>
@@ -658,7 +613,7 @@
             <section class="panel panel-gap" id="usersSection">
               <div class="panel-header"><h3 data-i18n="usersTitle">ইউজার ম্যানেজমেন্ট (শুধু অ্যাডমিন)</h3></div>
               <form id="userForm" class="panel form-panel user-form-inner">
-                <div class="panel-header"><h4 id="userFormTitle">নতুন ইউজার</h4></div>
+                <div class="panel-header"><h4 id="userFormTitle">New user</h4></div>
                 <label>
                   <span data-i18n="usernameStar">ইউজারনেম *</span>
                   <input id="userName" type="text" required maxlength="40" />
@@ -701,8 +656,8 @@
                   <select id="userStudent"></select>
                 </label>
                 <div class="form-actions">
-                  <button id="userSubmitBtn" class="primary-btn" type="submit">ইউজার বানাও</button>
-                  <button id="userCancelBtn" class="secondary-btn" type="button" hidden>বাতিল</button>
+                  <button id="userSubmitBtn" class="primary-btn" type="submit">Create user</button>
+                  <button id="userCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button>
                 </div>
               </form>
               <div class="table-wrap panel-gap">
@@ -752,10 +707,30 @@
       </main>
     </div>
 
-    <div id="bootOverlay" class="boot-overlay" hidden><span data-i18n="loading">লোড হচ্ছে…</span></div>
+    <dialog id="feeDetailDialog" class="app-dialog fee-detail-dialog" aria-labelledby="feeDetailTitle">
+      <div class="dialog-heading"><h2 id="feeDetailTitle">Student fee detail</h2><button id="closeFeeDetail" class="secondary-btn" type="button">Close</button></div>
+      <div id="feeDetailBody"></div>
+    </dialog>
+    <dialog id="discountConfirmDialog" class="app-dialog confirm-dialog" aria-labelledby="discountConfirmTitle">
+      <h2 id="discountConfirmTitle">Apply discount?</h2><p id="discountConfirmText"></p>
+      <div class="form-actions"><button id="confirmDiscountBtn" class="primary-btn" type="button">Apply discount</button><button id="cancelDiscountBtn" class="secondary-btn" type="button">Cancel</button></div>
+    </dialog>
+    <dialog id="receiptDialog" class="app-dialog receipt-dialog" aria-labelledby="receiptDialogTitle">
+      <div class="dialog-heading receipt-actions"><h2 id="receiptDialogTitle">Print preview</h2><button id="closeReceiptBtn" class="secondary-btn" type="button">Close</button></div>
+      <article id="receiptPaper" class="receipt-paper"></article>
+      <div class="form-actions receipt-actions"><button id="printReceiptBtn" class="primary-btn" type="button">Print</button></div>
+    </dialog>
+    <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Primary navigation">
+      <button type="button" data-view="dashboard"><span aria-hidden="true">⌂</span><span>Home</span></button>
+      <button type="button" data-view="reminders"><span aria-hidden="true">♧</span><span>Reminder</span></button>
+      <button type="button" data-view="students"><span aria-hidden="true">♙</span><span>Students</span></button>
+      <button type="button" data-view="fees"><span aria-hidden="true">৳</span><span>Fees</span></button>
+      <button type="button" data-view="more"><span aria-hidden="true">•••</span><span>More</span></button>
+    </nav>
+    <div id="bootOverlay" class="boot-overlay" hidden><span data-i18n="loading">Loading…</span></div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="./app.js?v=4"></script>
+    <script src="./app.js?v=5"></script>
   </body>
 </html>
