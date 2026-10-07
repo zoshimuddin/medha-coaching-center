@@ -9,3 +9,10 @@
 <FilesMatch "^\.">
   Require all denied
 </FilesMatch>
+
+# Never cache website files — Hostinger git deploys go live instantly.
+<IfModule mod_headers.c>
+  <FilesMatch "\.(html|js|css)$">
+    Header set Cache-Control "no-cache, must-revalidate"
+  </FilesMatch>
+</IfModule>
