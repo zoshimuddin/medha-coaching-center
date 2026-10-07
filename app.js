@@ -947,7 +947,18 @@ els.scanFileInput.addEventListener("change", async () => {
         courses: state.courses.map((c) => ({ id: c.id, name: c.name })),
       },
     });
-    if (error) throw error;
+    if (error) {
+      const real = await edgeErrorMessage(error);
+      if (/not found/i.test(real)) {
+        toast(t("msgScanNoFunc"));
+      } else if (real) {
+        toast(real);
+      } else {
+        toast(t("msgScanFail"));
+      }
+      console.warn("scan-form error:", error, real);
+      return;
+    }
     const { found, unmatched } = prefillFromScan(data?.fields || {});
     if (found > 0) {
       toast(`${toNum(found)} ${t("msgScanDone")}${unmatched.length ? ` — ${t("msgScanUnmatched")} ${unmatched.join(", ")}` : ""}`);
@@ -955,12 +966,7 @@ els.scanFileInput.addEventListener("change", async () => {
       toast(t("msgScanEmpty"));
     }
   } catch (err) {
-    if (/not found|404|non-2xx|failed to fetch/i.test(err?.message || "")) {
-      toast(t("msgScanNoFunc"));
-      console.warn("scan-form not deployed:", err);
-    } else {
-      fail(err);
-    }
+    fail(err);
   } finally {
     els.scanBtn.disabled = false;
     els.scanFileInput.value = "";
@@ -2194,12 +2200,24 @@ els.userRole.addEventListener("change", () => {
   els.payrollAccessWrap.style.display = role === "teacher" ? "" : "none";
 });
 
+async function edgeErrorMessage(error) {
+  try {
+    const body = await error?.context?.json();
+    return body?.error || body?.message || "";
+  } catch {
+    return "";
+  }
+}
+
 async function createUserViaEdge(email, password, profile) {
   const { data, error } = await sb.functions.invoke("admin-users", {
     body: { action: "create", email, password, profile },
   });
-  if (error && /not found|404|failed to fetch|non-2xx/i.test(error.message)) return { skipped: true };
-  if (error) throw error;
+  if (error) {
+    const real = await edgeErrorMessage(error);
+    if (/not found/i.test(real)) return { skipped: true };
+    throw new Error(real || error.message);
+  }
   return { id: data?.id };
 }
 
@@ -2361,12 +2379,17 @@ function renderUsers() {
       if (!confirmDelete(`"${user.username}" ${t("confirmDeleteUser")}`)) return;
       try {
         const { error } = await sb.functions.invoke("admin-users", { body: { action: "delete", id: user.id } });
-        if (error && /not found|404|failed to fetch|non-2xx/i.test(error.message)) {
-          const { error: delErr } = await sb.from("profiles").delete().eq("id", user.id);
-          if (delErr) throw delErr;
-          toast(t("msgUserDeleted"));
-        } else if (error) {
-          throw error;
+        if (error) {
+          const real = await edgeErrorMessage(error);
+          if (/not found/i.test(real)) {
+            const { error: delErr } = await sb.from("profiles").delete().eq("id", user.id);
+            if (delErr) throw delErr;
+            toast(t("msgUserDeleted"));
+          } else if (real) {
+            throw new Error(real);
+          } else {
+            throw error;
+          }
         } else {
           toast(t("msgUserDeleted"));
         }
