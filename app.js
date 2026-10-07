@@ -2209,13 +2209,35 @@ async function edgeErrorMessage(error) {
   }
 }
 
+// The edge function can be unreachable for reasons other than a clean 404: when
+// it is not deployed, Supabase's gateway CORS reply omits headers the browser
+// needs, so the preflight fails and supabase-js throws a FunctionsFetchError
+// ("Failed to send a request to the Edge Function") whose body is unreadable.
+// Treat all of those as "not deployed" so the browser fallback can take over.
+function isEdgeUnavailable(error, real) {
+  const name = String(error?.name || "");
+  const message = String(error?.message || "");
+  return (
+    name === "FunctionsFetchError" ||
+    /failed to send a request to the edge function/i.test(message) ||
+    /failed to fetch|load failed|networkerror/i.test(message) ||
+    /not found/i.test(real || "")
+  );
+}
+
 async function createUserViaEdge(email, password, profile) {
-  const { data, error } = await sb.functions.invoke("admin-users", {
-    body: { action: "create", email, password, profile },
-  });
+  let data = null;
+  let error = null;
+  try {
+    ({ data, error } = await sb.functions.invoke("admin-users", {
+      body: { action: "create", email, password, profile },
+    }));
+  } catch (err) {
+    error = err;
+  }
   if (error) {
     const real = await edgeErrorMessage(error);
-    if (/not found/i.test(real)) return { skipped: true };
+    if (isEdgeUnavailable(error, real)) return { skipped: true };
     throw new Error(real || error.message);
   }
   return { id: data?.id };
@@ -2228,6 +2250,10 @@ async function createUserFallback(email, password, profile) {
   if (signUpErr) throw signUpErr;
   const newId = signUpData?.user?.id;
   if (!newId) throw new Error(t("msgEmailConfirm"));
+  // With email confirmation off, signUp returns a session and swaps the client
+  // to the new user. Restore the admin's session first, otherwise the profile
+  // insert below runs as the new user and is blocked by the admin-only RLS policy.
+  if (savedSession) await sb.auth.setSession(savedSession);
   const { error: profErr } = await sb.from("profiles").insert({
     id: newId, username: profile.username, role: profile.role, tabs: profile.tabs,
     money_edit: !!profile.money_edit, student_field_grants: profile.student_field_grants || [],
@@ -2235,7 +2261,6 @@ async function createUserFallback(email, password, profile) {
     student_id: profile.student_id || null,
   });
   if (profErr) throw profErr;
-  if (signUpData.session && savedSession) await sb.auth.setSession(savedSession);
   return { id: newId, needsConfirm: !signUpData.session };
 }
 
@@ -2378,17 +2403,20 @@ function renderUsers() {
       if (!user || user.id === currentUser.id) return;
       if (!confirmDelete(`"${user.username}" ${t("confirmDeleteUser")}`)) return;
       try {
-        const { error } = await sb.functions.invoke("admin-users", { body: { action: "delete", id: user.id } });
-        if (error) {
-          const real = await edgeErrorMessage(error);
-          if (/not found/i.test(real)) {
+        let edgeErr = null;
+        try {
+          ({ error: edgeErr } = await sb.functions.invoke("admin-users", { body: { action: "delete", id: user.id } }));
+        } catch (err) {
+          edgeErr = err;
+        }
+        if (edgeErr) {
+          const real = await edgeErrorMessage(edgeErr);
+          if (isEdgeUnavailable(edgeErr, real)) {
             const { error: delErr } = await sb.from("profiles").delete().eq("id", user.id);
             if (delErr) throw delErr;
             toast(t("msgUserDeleted"));
-          } else if (real) {
-            throw new Error(real);
           } else {
-            throw error;
+            throw new Error(real || edgeErr.message);
           }
         } else {
           toast(t("msgUserDeleted"));
