@@ -1,7 +1,9 @@
 const SUPABASE_URL = "https://mlsyvhlnnjexqtaswayi.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1sc3l2aGxubmpleHF0YXN3YXlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTA4NDY2MDQsImV4cCI6MjEwNjQyMjYwNH0.xLaU6vHgz82qtvUyI5RwZLoVbk-hRRHetglO7N71VVw";
 
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true },
+});
 
 const today = (() => {
   const date = new Date();
@@ -200,11 +202,27 @@ function yearLabel(year) {
   return year || t("dash");
 }
 
+function markRequiredStars() {
+  // Color the trailing required asterisk red without touching i18n text nodes.
+  document.querySelectorAll("label > span").forEach((span) => {
+    const text = span.textContent || "";
+    if (text.trimEnd().endsWith("*") && !span.querySelector(".req-star")) {
+      const trimmed = text.trimEnd();
+      span.textContent = trimmed.slice(0, -1);
+      const star = document.createElement("em");
+      star.className = "req-star";
+      star.textContent = "*";
+      span.appendChild(star);
+    }
+  });
+}
+
 function applyLang() {
   lang = "en";
   document.documentElement.lang = "en";
   document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = tr(el.dataset.i18n); });
   document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = trPh(el.dataset.i18nPh); });
+  markRequiredStars();
   applyBrand();
 }
 
@@ -275,6 +293,7 @@ let lastReceipt = null;
 let pendingDiscount = null;
 let ideaFilter = "All";
 let reportPeriod = "month";
+let coursePickerTab = "subject";
 
 const els = {};
 for (const el of document.querySelectorAll("[id]")) els[el.id] = el;
@@ -504,9 +523,47 @@ const db = {
 
 /* ================= auth & permissions ================= */
 
+// Session policy: the login survives reloads and same-day visits; everyone is
+// logged out after 24h without activity and must sign in again.
+const SESSION_IDLE_KEY = "ccmLastActive";
+const SESSION_IDLE_MS = 24 * 60 * 60 * 1000;
+let lastSessionTouch = 0;
+
+function touchSession(force = false) {
+  const now = Date.now();
+  if (!force && now - lastSessionTouch < 60_000) return;
+  lastSessionTouch = now;
+  try { localStorage.setItem(SESSION_IDLE_KEY, String(now)); } catch { /* ignore */ }
+}
+
+function sessionExpired() {
+  try {
+    const last = Number(localStorage.getItem(SESSION_IDLE_KEY) || 0);
+    return last > 0 && Date.now() - last > SESSION_IDLE_MS;
+  } catch { return false; }
+}
+
+["click", "keydown", "touchstart", "visibilitychange"].forEach((eventName) => {
+  window.addEventListener(eventName, () => touchSession(), { passive: true });
+});
+
+setInterval(() => {
+  if (currentUser && sessionExpired()) {
+    doLogout();
+    toast("Logged out — no activity for a day. Please log in again.");
+  }
+}, 60_000);
+
 async function loadCurrentUserAndData() {
   const { data: userData, error: userErr } = await sb.auth.getUser();
   if (userErr || !userData?.user) return false;
+  // A saved session older than the idle window (e.g. device unused for a day)
+  // forces a fresh login for every user.
+  if (sessionExpired()) {
+    await sb.auth.signOut();
+    return false;
+  }
+  touchSession(true);
   const { data: prof, error: profErr } = await sb.from("profiles").select("*").eq("id", userData.user.id).maybeSingle();
   if (profErr || !prof) {
     await sb.auth.signOut();
@@ -912,6 +969,11 @@ function prefillFromScan(fields) {
       unmatched.push(c.label);
     }
   }
+  const firstPicked = rows.find((row) => row.querySelector("input[type='checkbox']").checked);
+  if (firstPicked) {
+    const pickedCourse = state.courses.find((c) => c.id === firstPicked.querySelector("input[type='checkbox']").value);
+    if (pickedCourse?.type === "package") switchCoursePickerTab("package");
+  }
   if (editingStudentId) {
     const current = state.students.find((s) => s.id === editingStudentId);
     els.studentDetailTitle.textContent = current ? current.name : "Edit student";
@@ -998,6 +1060,14 @@ function renderStudentOptions() {
   }
 }
 
+function switchCoursePickerTab(tab) {
+  coursePickerTab = tab === "package" ? "package" : "subject";
+  document.querySelectorAll("[data-picker-tab]").forEach((b) => b.classList.toggle("active", b.dataset.pickerTab === coursePickerTab));
+  els.studentCoursesBox.querySelectorAll(".course-pick-group").forEach((group) => {
+    group.hidden = group.dataset.groupType !== coursePickerTab;
+  });
+}
+
 function renderStudentCourseBox() {
   const target = editingStudentId || "new";
   const student = editingStudentId ? state.students.find((s) => s.id === editingStudentId) : null;
@@ -1028,11 +1098,11 @@ function renderStudentCourseBox() {
   };
   const groupHtml = (type, title) => {
     const rows = state.courses.filter((c) => c.type === type);
-    return `<div class="course-pick-group"><h4>${title} · ${toNum(rows.length)}</h4><div class="course-pick-box course-pick-scroll">${rows.length ? rows.map(rowHtml).join("") : `<span class="muted-note">${t("noCourse")}</span>`}</div></div>`;
+    return `<div class="course-pick-group" data-group-type="${type}"${type === coursePickerTab ? "" : " hidden"}><h4>${title} · ${toNum(rows.length)}</h4><div class="course-pick-box course-pick-scroll">${rows.length ? rows.map(rowHtml).join("") : `<span class="muted-note">${t("noCourse")}</span>`}</div></div>`;
   };
   els.studentCoursesBox.dataset.for = target;
   els.studentCoursesBox.innerHTML = state.courses.length
-    ? `<div class="course-pick-groups">${groupHtml("subject", "Subjects")}${groupHtml("package", "Packages")}</div>`
+    ? `${groupHtml("subject", "Courses")}${groupHtml("package", "Packages")}`
     : `<span class="muted-note">${t("noCourse")}</span>`;
   els.studentCoursesBox.querySelectorAll(".course-pick").forEach((row) => {
     const box = row.querySelector("input[type='checkbox']");
@@ -1048,6 +1118,9 @@ function renderStudentCourseBox() {
   });
 }
 
+document.querySelectorAll("[data-picker-tab]").forEach((button) =>
+  button.addEventListener("click", () => switchCoursePickerTab(button.dataset.pickerTab)));
+
 function studentTotalDue(studentId) {
   return state.invoices
     .filter((i) => i.studentId === studentId)
@@ -1059,21 +1132,24 @@ els.studentForm.addEventListener("submit", async (event) => {
   if (!requireEdit("students")) return;
   const name = els.studentName.value.trim();
   const phone = els.studentPhone.value.trim();
-  if (!name) { toast(t("msgNameReq")); flashInvalid(els.studentName); return; }
-  if (!phone) { toast(t("msgPhoneReq")); flashInvalid(els.studentPhone); return; }
-  if (!els.studentCollege.value) { toast(t("msgCollegeReq")); flashInvalid(els.studentCollege); return; }
-  if (!els.studentGroup.value) { toast(t("msgGroupReq")); flashInvalid(els.studentGroup); return; }
+  const missing = [];
+  if (!name) { missing.push("Name"); flashInvalid(els.studentName); }
+  if (!phone) { missing.push("Mobile number"); flashInvalid(els.studentPhone); }
+  if (!els.studentCollege.value) { missing.push("College"); flashInvalid(els.studentCollege); }
+  if (!els.studentGroup.value) { missing.push("Group"); flashInvalid(els.studentGroup); }
   const enrollments = [];
+  let feeInvalid = false;
   for (const row of els.studentCoursesBox.querySelectorAll(".course-pick")) {
     const box = row.querySelector("input[type='checkbox']");
     if (!box.checked) continue;
     const fee = Number(row.querySelector("input[type='number']").value === "" ? 0 : row.querySelector("input[type='number']").value);
-    if (Number.isNaN(fee) || fee < 0) { toast(t("msgFeeNeg")); flashInvalid(row.querySelector("input[type='number']")); return; }
+    if (Number.isNaN(fee) || fee < 0) { feeInvalid = true; flashInvalid(row.querySelector("input[type='number']")); continue; }
     enrollments.push({ course_id: box.value, fee });
   }
-  if (!enrollments.length) { toast(t("msgPickCourse")); flashInvalid(els.coursePickSection); return; }
-  const admissionPaid = Number(els.admissionPaid.value === "" ? 0 : els.admissionPaid.value);
-  if (admissionPaid < state.settings.admissionFee) { toast(t("msgAdmissionShort")); flashInvalid(els.admissionPaid); return; }
+  if (!enrollments.length) { missing.push("Course/Package"); flashInvalid(els.coursePickSection); }
+  if (feeInvalid) { toast(t("msgFeeNeg")); return; }
+  if (missing.length) { toast(`Fill required fields: ${missing.join(", ")}`); return; }
+  const admissionPaid = state.settings.admissionFee;
 
   const pStudent = {
     id: editingStudentId || "",
@@ -1272,6 +1348,7 @@ function startEditStudent(id) {
 
 function resetStudentForm() {
   editingStudentId = null;
+  coursePickerTab = "subject";
   els.studentForm.reset();
   els.studentForm.hidden = true;
   els.studentDetailPage.hidden = true;
@@ -1284,6 +1361,7 @@ function resetStudentForm() {
   els.studentAdmissionDate.value = today;
   renderStudentOptions();
   renderStudentCourseBox();
+  switchCoursePickerTab("subject");
 }
 
 els.studentSearch.addEventListener("input", renderStudents);
@@ -1382,8 +1460,13 @@ function renderCourses() {
       if (!requireEdit("courses")) return;
       const course = state.courses.find((item) => item.id === b.dataset.deleteCourse);
       if (!course) return;
-      if (!confirmDelete(`"${course.name}" ${t("confirmDeleteCourse")}`)) return;
+      if (!confirmDelete(`Delete "${course.name}"? Its enrollments, schedules, and fee invoices are removed too. This cannot be undone.`)) return;
       try {
+        // Remove dependents first: every FK to courses is restrictive, so the
+        // course row itself can only go after its children are cleared.
+        await sb.from("enrollments").delete().eq("course_id", course.id);
+        await sb.from("student_fee_invoices").delete().eq("course_id", course.id);
+        await sb.from("course_offerings").delete().eq("course_id", course.id);
         const { error } = await sb.from("courses").delete().eq("id", course.id);
         if (error) throw error;
       } catch (err) {
@@ -1933,7 +2016,7 @@ async function saveMonthFee(student, month, amount, paymentDate, applyDiscount, 
   toast(editReceiptId ? "Receipt updated." : "Payment saved.");
   logActivity(editReceiptId ? "Receipt edit" : "Fee collection", `${student.studentNumber} · ${formatMoney(amount)}${applyDiscount ? " with discount" : ""}`);
   await db.loadFinance();
-  renderFees();
+  renderAll();
   await openFeeDetail(student.id);
   if (amount > 0 || applyDiscount) openReceipt(lastReceipt);
 }
@@ -1949,7 +2032,7 @@ async function deleteReceipt(receiptId, student) {
   toast("Receipt deleted.");
   logActivity("Receipt delete", student.studentNumber);
   await db.loadFinance();
-  renderFees();
+  renderAll();
   await openFeeDetail(student.id);
 }
 
@@ -2258,7 +2341,6 @@ function renderSettings() {
   els.setAdmissionFee.value = state.settings.admissionFee;
   renderChips(els.collegesBox, state.settings.colleges, "college");
   renderChips(els.groupsBox, state.settings.groups, "group");
-  renderTrash();
 }
 
 function renderTrash() {
@@ -2780,6 +2862,12 @@ function logActivity(action, detail) {
   }).then(({ error }) => { if (error) console.debug("activity log:", error.message); });
 }
 
+els.adminToolsToggle.addEventListener("click", () => {
+  const open = els.adminToolsBody.hidden;
+  els.adminToolsBody.hidden = !open;
+  els.adminToolsToggle.setAttribute("aria-expanded", String(open));
+});
+
 els.exportDataBtn.addEventListener("click", () => {
   if (!isAdmin()) return;
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
@@ -3020,9 +3108,16 @@ const inRange = (value, range) => {
 function renderReports() {
   if (!isManager()) return;
   const range = reportRange();
-  const income = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0);
+  const moneyIncome = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0);
   const expense = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "expense").reduce((sum, entry) => sum + entry.amount, 0);
   const cash = state.feePayments.filter((payment) => inRange(payment.payment_date || payment.paid_at?.slice(0, 10), range)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  // Fee collection is income everywhere. When the database already posts a
+  // "Student fee" row per receipt, drop it here and add the raw payments so
+  // the total never double counts whether or not that trigger is deployed.
+  const postedFeeIncome = state.money
+    .filter((entry) => inRange(entry.date, range) && entry.type === "income" && (entry.category || "").toLowerCase() === "student fee")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const income = moneyIncome - postedFeeIncome + cash;
   const discounts = state.feeDiscounts.filter((discount) => range.months.includes(String(discount.billing_month || "").slice(0, 7))).reduce((sum, discount) => sum + Number(discount.amount || 0), 0);
   const due = state.invoices.filter((invoice) => range.months.includes(invoice.month)).reduce((sum, invoice) => sum + invoiceDue(invoice), 0);
   const collected = state.invoices.filter((invoice) => range.months.includes(invoice.month)).reduce((sum, invoice) => sum + invoice.paid, 0);
@@ -3032,7 +3127,11 @@ function renderReports() {
   els.reportIncome.textContent = formatMoney(income);
   els.reportExpense.textContent = formatMoney(expense);
   els.reportNet.textContent = formatMoney(income - expense);
-  els.reportBankBalance.textContent = formatMoney(bankBalance());
+  // Bank balance as of the end of the selected period, not just today.
+  const bankEnd = state.bank.opening + state.bankTx
+    .filter((tx) => String(tx.date || "") <= range.end)
+    .reduce((sum, tx) => sum + (tx.direction === "deposit" ? tx.amount : -tx.amount), 0);
+  els.reportBankBalance.textContent = formatMoney(bankEnd);
   els.reportCollection.textContent = formatMoney(cash);
   els.reportDue.textContent = formatMoney(due);
   els.reportDiscount.textContent = formatMoney(discounts);
@@ -3061,7 +3160,7 @@ function renderReports() {
   const deposits = bankRows.filter((tx) => tx.direction === "deposit").reduce((s, tx) => s + tx.amount, 0);
   const withdrawals = bankRows.filter((tx) => tx.direction === "withdrawal").reduce((s, tx) => s + tx.amount, 0);
   els.reportBank.innerHTML =
-    `<div class="dues-summary"><span class="badge paid">Deposits ${formatMoney(deposits)}</span><span class="badge due">Withdrawals ${formatMoney(withdrawals)}</span><span class="badge">Balance ${formatMoney(bankBalance())}</span></div>` +
+    `<div class="dues-summary"><span class="badge paid">Deposits ${formatMoney(deposits)}</span><span class="badge due">Withdrawals ${formatMoney(withdrawals)}</span><span class="badge">Balance ${formatMoney(bankEnd)}</span></div>` +
     (bankRows.length ? bankRows.slice(0, 8).map((tx) => `<div class="compact-item"><div><strong>${tx.direction === "deposit" ? "Deposit" : "Withdrawal"} · ${formatMoney(tx.amount)}</strong><span>${escapeHtml(tx.date || "")}${tx.note ? " · " + escapeHtml(tx.note) : ""}</span></div></div>`).join("") : emptyState("No bank activity in this period."));
 }
 
@@ -3191,6 +3290,7 @@ function renderAll() {
   renderReports();
   renderIdeas();
   renderMoreLinks();
+  renderTrash();
 }
 
 /* ================= boot ================= */

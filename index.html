@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Medha Coaching Center Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=6" />
+    <link rel="stylesheet" href="./styles.css?v=7" />
   </head>
   <body>
     <div id="loginView" class="login-wrap" hidden>
@@ -80,8 +80,21 @@
           <!-- ============ DASHBOARD ============ -->
           <section id="dashboard" class="view">
             <section class="home-finance-panel panel">
-              <div class="home-finance-highlight"><div><span>Total due</span><strong id="homeTotalDue">৳0</strong></div><div><span>Total collection</span><strong id="homeTotalCollection">৳0</strong></div></div>
-              <div class="home-periods"><div><span>Today</span><strong id="homeDailyCollection">৳0</strong></div><div><span>This month</span><strong id="homeMonthlyCollection">৳0</strong></div><div><span>This year</span><strong id="homeYearlyCollection">৳0</strong></div></div>
+              <div class="home-finance-highlight">
+                <article class="home-card home-card-due">
+                  <span class="home-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>
+                  <div><span>Total due</span><strong id="homeTotalDue">৳0</strong></div>
+                </article>
+                <article class="home-card home-card-in">
+                  <span class="home-card-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+                  <div><span>Total collection</span><strong id="homeTotalCollection">৳0</strong></div>
+                </article>
+              </div>
+              <div class="home-periods">
+                <article class="home-card home-card-period"><span>Today</span><strong id="homeDailyCollection">৳0</strong></article>
+                <article class="home-card home-card-period"><span>This month</span><strong id="homeMonthlyCollection">৳0</strong></article>
+                <article class="home-card home-card-period"><span>This year</span><strong id="homeYearlyCollection">৳0</strong></article>
+              </div>
             </section>
             <div class="home-summary-grid"><article class="home-summary-card"><strong id="homeStudentCount">0</strong><span>Total students</span></article><article class="home-summary-card"><strong id="homeExpenseCount">৳0</strong><span>This month’s expenses</span></article><article class="home-summary-card"><strong id="homeBirthdayCount">0</strong><span>Today’s birthdays</span></article><article class="home-summary-card"><strong id="homeAbsentCount">0</strong><span>Absent today</span></article></div>
             <div class="home-shortcuts"><button type="button" data-home-view="courses">Courses & batches</button><button type="button" data-home-view="attendance">Attendance</button><button type="button" data-home-view="reminders">Reminders</button><button type="button" data-home-view="reports">Reports</button></div>
@@ -205,14 +218,25 @@
               <div class="panel-header"><h3>More sections</h3></div>
               <div id="moreLinks" class="more-links"></div>
             </section>
+            <section class="panel panel-gap" id="trashSection" hidden>
+              <div class="panel-header"><h3>Trash <span class="badge due">kept 30 days</span></h3></div>
+              <p class="muted-note">Deleted students wait here for 30 days — visible to admin only.</p>
+              <div class="trash-tools">
+                <button id="purgeTrashBtn" class="small-btn" type="button">Delete entries older than 30 days</button>
+              </div>
+              <div id="trashRows" class="trash-list" aria-live="polite"></div>
+            </section>
+
             <section class="panel panel-gap" id="adminTools" hidden>
-              <div class="panel-header"><h3>Backup & data</h3></div>
-              <p class="muted-note">Download a full JSON backup, upload it back, or clear the app data — admin only.</p>
-              <div class="backup-actions">
-                <button id="exportDataBtn" class="secondary-btn" type="button" data-i18n="backupDown">Download backup</button>
-                <label class="secondary-btn file-btn" for="importFileInput" data-i18n="backupUp">Upload backup</label>
-                <input id="importFileInput" type="file" accept="application/json" hidden />
-                <button id="clearDataBtn" class="danger-btn" type="button" data-i18n="clearAll">Clear all data</button>
+              <button id="adminToolsToggle" class="admin-toggle" type="button" aria-expanded="false" aria-controls="adminToolsBody"><span>Backup &amp; data (admin)</span><span class="admin-chevron" aria-hidden="true">▾</span></button>
+              <div id="adminToolsBody" class="admin-tools-body" hidden>
+                <p class="muted-note">Download a full JSON backup, upload it back, or clear the app data — admin only. Kept behind a toggle so Clear all data is never tapped by accident.</p>
+                <div class="backup-actions">
+                  <button id="exportDataBtn" class="secondary-btn" type="button" data-i18n="backupDown">Download backup</button>
+                  <label class="secondary-btn file-btn" for="importFileInput" data-i18n="backupUp">Upload backup</label>
+                  <input id="importFileInput" type="file" accept="application/json" hidden />
+                  <button id="clearDataBtn" class="danger-btn" type="button" data-i18n="clearAll">Clear all data</button>
+                </div>
               </div>
             </section>
           </section>
@@ -274,11 +298,15 @@
                 </div>
                 <label><span>Batch</span><select id="studentBatch"></select></label>
                 <section id="coursePickSection" class="course-pick-section">
-                  <p class="course-pick-title">Courses & packages <span class="course-pick-hint">pick at least one *</span></p>
+                  <p class="course-pick-title">Pick at least one <em class="req-star">*</em></p>
+                  <div class="course-pick-tabs" role="tablist" aria-label="Course or package">
+                    <button type="button" class="picker-tab active" data-picker-tab="subject" aria-pressed="true">Course</button>
+                    <button type="button" class="picker-tab" data-picker-tab="package" aria-pressed="false">Package</button>
+                  </div>
                   <div id="studentCoursesBox" class="course-pick-box"></div>
                 </section>
                 <p id="scanStatus" class="scan-status" role="status" hidden></p>
-                <div class="admission-box"><p class="admission-note">Admission fee: <strong id="admissionFeeNote">৳0</strong></p><label><span>Admission fee paid *</span><input id="admissionPaid" type="number" min="0" step="1" required /></label></div>
+                <div class="admission-box"><p class="admission-note">Admission fee (fixed in Settings): <strong id="admissionFeeNote">৳0</strong></p><label><span>Admission fee (auto)</span><input id="admissionPaid" type="number" min="0" step="1" readonly /></label></div>
                 <div class="form-actions"><button id="studentSubmitBtn" class="primary-btn" type="submit">Add student</button><button id="studentCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button></div>
               </form>
             </div>
@@ -636,14 +664,6 @@
               </form>
             </section>
 
-            <section class="panel panel-gap" id="trashSection" hidden>
-              <div class="panel-header"><h3>Deleted students <span class="badge due">kept 30 days</span></h3></div>
-              <div class="trash-tools">
-                <button id="purgeTrashBtn" class="small-btn" type="button">Delete entries older than 30 days</button>
-              </div>
-              <div id="trashRows" class="trash-list" aria-live="polite"></div>
-            </section>
-
             <section class="panel panel-gap" id="usersSection">
               <div class="panel-header"><h3 data-i18n="usersTitle">ইউজার ম্যানেজমেন্ট (শুধু অ্যাডমিন)</h3></div>
               <form id="userForm" class="panel form-panel user-form-inner">
@@ -766,6 +786,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="./app.js?v=7"></script>
+    <script src="./app.js?v=8"></script>
   </body>
 </html>

@@ -1346,8 +1346,8 @@ td {
     gap: 10px;
     background: #0d2440;
     color: #ffffff;
-    padding: 8px 12px;
-    min-height: 54px;
+    padding: 9px 12px;
+    min-height: 58px;
     position: sticky;
     top: 0;
     z-index: 40;
@@ -1359,10 +1359,10 @@ td {
 
   .mobile-brand-name {
     justify-self: center;
-    font-size: 17px;
+    font-size: 20px;
     font-weight: 800;
     letter-spacing: 0.3px;
-    max-width: 46vw;
+    max-width: 48vw;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1866,7 +1866,7 @@ body:has(.app-shell[hidden]) .mobile-bottom-nav,
 body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !important; }
 .reminder-list { display: grid; gap: 10px; }
 .reminder-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
-.reminder-card > div:nth-child(2) { display: grid; gap: 2px; flex: 1; }
+.reminder-card > div:nth-child(2) { display: grid; gap: 2px; flex: 1 1 140px; min-width: 0; }
 .reminder-card > div:nth-child(2) span { color: var(--muted); }
 .report-hero { color: #fff; background: linear-gradient(120deg, #1766ad, #103250); }
 .report-hero .muted-note, .report-hero p { color: #d6e7fa; }
@@ -2204,6 +2204,8 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
 
 /* ---------- header compaction ---------- */
 
+html, body { overflow-x: clip; }
+
 .topbar { margin-bottom: 16px; }
 .topbar h2 { font-size: 26px; }
 
@@ -2280,10 +2282,27 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
   font-size: 12px;
 }
 
-.course-pick-groups {
+.course-pick-tabs {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
+}
+
+.picker-tab {
+  min-height: 48px;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.picker-tab.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .course-pick-group {
@@ -2291,6 +2310,8 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
   gap: 6px;
   align-content: start;
 }
+
+.course-pick-group[hidden] { display: none !important; }
 
 .course-pick-group h4 {
   margin: 0;
@@ -2312,8 +2333,74 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
 }
 
 @media (max-width: 620px) {
-  .course-pick-groups { grid-template-columns: 1fr; }
   .course-pick-group .course-pick-box { max-height: 150px; }
+}
+
+/* ---------- required field stars ---------- */
+
+.req-star {
+  color: var(--danger);
+  font-style: normal;
+  font-weight: 800;
+  margin-left: 2px;
+}
+
+/* ---------- home finance cards ---------- */
+
+.home-finance-panel {
+  background: linear-gradient(135deg, #0d2440, #14568a);
+  border: 0;
+  color: #ffffff;
+  border-radius: 18px;
+}
+
+.home-finance-highlight {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.home-card {
+  border-radius: 16px;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  align-content: start;
+}
+
+.home-card-due,
+.home-card-in {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+
+.home-card > div { display: grid; gap: 2px; min-width: 0; }
+
+.home-card-due { background: linear-gradient(135deg, #b3403c, #e08a3c); box-shadow: 0 10px 24px rgba(224, 138, 60, 0.35); }
+.home-card-in { background: linear-gradient(135deg, #1f8a4c, #2f9e63); box-shadow: 0 10px 24px rgba(47, 158, 99, 0.35); }
+
+.home-card-icon { display: inline-flex; }
+.home-card-icon svg { width: 22px; height: 22px; }
+
+.home-card strong { font-size: 22px; line-height: 1.15; color: #ffffff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-card span { color: rgba(255, 255, 255, 0.85); font-size: 12.5px; font-weight: 700; }
+
+.home-periods {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.home-card-period {
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+@media (max-width: 620px) {
+  .home-card strong { font-size: 18px; }
+  .home-card { padding: 12px; }
 }
 
 /* ---------- courses: top three + scrollable rest ---------- */
@@ -2351,12 +2438,64 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
   border-inline-start: 4px solid var(--accent);
   border-radius: 14px;
   box-shadow: var(--shadow);
+  flex-wrap: wrap;
+  min-width: 0;
 }
 
 .reminder-card.reminder-due { border-inline-start-color: #e08a3c; }
 .reminder-card.reminder-birthday { border-inline-start-color: #2f9e63; }
 
-.reminder-card strong { font-size: 15px; }
+.reminder-copy { min-width: 0; flex: 1 1 120px; }
+
+.reminder-card strong {
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reminder-copy span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reminder-card .badge { flex: 0 0 auto; }
+
+@media (max-width: 400px) {
+  .reminder-card { padding: 10px; gap: 8px; }
+  .reminder-card strong { font-size: 13px; }
+  .reminder-card .student-avatar { width: 38px; height: 38px; flex-basis: 38px; font-size: 16px; }
+}
+
+/* ---------- admin tools toggle (More) ---------- */
+
+.admin-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  background: var(--page);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 12px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.admin-toggle:hover { border-color: var(--accent); }
+
+.admin-chevron { transition: transform 0.2s ease; font-size: 12px; }
+
+.admin-toggle[aria-expanded="true"] .admin-chevron { transform: rotate(180deg); }
+
+.admin-tools-body { display: grid; gap: 10px; padding-top: 10px; }
+
+input[readonly] { background: #eef2f7; color: var(--muted); }
 
 /* ---------- trash (admin only) ---------- */
 
