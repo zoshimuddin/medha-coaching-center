@@ -80,26 +80,42 @@ Deno.serve(async (req) => {
     .join("\n");
   const prompt = PROMPT_TEMPLATE.replace("<<COURSES>>", courseList || "(list empty — return courseId \"\" for all)");
 
-  const model = String(body.model ?? "gemini-2.0-flash");
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mime, data: base64 } },
-          ],
-        }],
-        generationConfig: { temperature: 0, responseMimeType: "application/json" },
-      }),
-    },
-  );
-  if (!res.ok) {
-    const errText = await res.text();
-    return json({ error: `Gemini API: ${errText.slice(0, 280)}` }, 502);
+  // Fast + free-tier friendly first; fall back automatically if a model is
+  // unavailable on this project's quota/region. Override with GEMINI_MODEL.
+  const requested = String(body.model ?? "").trim();
+  const models = [...new Set([
+    requested || Deno.env.get("GEMINI_MODEL") || "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash",
+  ])];
+  let res: Response | null = null;
+  let lastError = "";
+  for (const model of models) {
+    res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            parts: [
+              { text: prompt },
+              { inline_data: { mime_type: mime, data: base64 } },
+            ],
+          }],
+          generationConfig: { temperature: 0, responseMimeType: "application/json" },
+        }),
+      },
+    );
+    if (res.ok) break;
+    lastError = await res.text();
+    // Unknown/unsupported model: try the next candidate; real API errors stop here.
+    if (!/not found|not supported|not available|404|INVALID_ARGUMENT/i.test(lastError)) {
+      return json({ error: `Gemini API: ${lastError.slice(0, 280)}` }, 502);
+    }
+  }
+  if (!res || !res.ok) {
+    return json({ error: `Gemini API: ${(lastError || "no model available").slice(0, 280)}` }, 502);
   }
   const data = await res.json();
   const text = (data?.candidates?.[0]?.content?.parts ?? [])

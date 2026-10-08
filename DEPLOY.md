@@ -15,9 +15,14 @@ same live database e thake. localStorage ar nei.
 4. Run `supabase/20261008_reports_ideas_accounts.sql` for the sub-admin role,
    the ideas board, automatic fee-income posting to Accounts, and the
    receipt edit/void functions.
-5. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+5. Run `supabase/20261009_softdelete_trash.sql` for the 30-day deleted-student
+   trash (Settings, admin only) and its trash/roster RPCs.
+6. Run `supabase/20261010_user_delete_fk.sql` so deleting users from
+   **Settings > User management** never fails on old attendance, teacher
+   payment, or bank records.
+7. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
    off if users should be created without email confirmation.
-6. Create the owner account in **Authentication > Users > Add user** and copy
+8. Create the owner account in **Authentication > Users > Add user** and copy
    its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -27,7 +32,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-6. Onno user ra ekhon **Settings > User management** thekei banano jabe
+9. Onno user ra ekhon **Settings > User management** thekei banano jabe
    (super admin login kore).
 
 ## 2. Admin-users Edge Function
@@ -37,7 +42,9 @@ and Admin roles can be assigned from **Settings > User management**.
 
 1. Supabase dashboard > **Edge Functions** > create a function named
    `admin-users` > paste `supabase/functions/admin-users/index.ts` > **Deploy**.
-   Redeploy it whenever this file changes.
+   Redeploy it whenever this file changes. Deletion now removes the Auth user
+   first (the profile row follows by cascade) and refuses to delete the super
+   admin account.
 2. Add the secret `SUPABASE_SERVICE_ROLE_KEY` under **Edge Functions > Secrets**
    (Settings > API > service_role key).
 3. Without the function the app falls back to browser signUp; deploying it is
@@ -53,6 +60,11 @@ The **Scan admission form** action can prefill student fields from a photo.
 3. Add `GEMINI_API_KEY` under **Edge Functions > Secrets**.
 4. In **Students > Add student**, choose **Scan admission form**, select or
    capture a photo, review the prefilled fields, then save.
+5. The function defaults to `gemini-3.5-flash-lite` (fast, free-tier friendly)
+   and automatically falls back to `gemini-3.5-flash` / `gemini-2.5-flash` if a
+   model is unavailable on the project. Set a `GEMINI_MODEL` secret to pin a
+   different model. Free-tier quotas can change — verify limits in Google AI
+   Studio if scans start failing.
 
 Scanning only prefills the form. Review every field before saving; clear,
 well-lit, front-facing photos produce the best results.

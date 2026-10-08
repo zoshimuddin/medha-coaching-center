@@ -76,6 +76,7 @@ const I18N = {
     activityTitle: "User History — who did what", allUsers: "All users",
     thUser: "User", thWork: "Action", thDetail: "Details",
     batchName: "Batch name *", batchList: "Batches",
+    scanBtn: "Scan admission form",
   },
 };
 
@@ -256,7 +257,7 @@ const state = {
   bank: { opening: 0 }, bankTx: [],
   teacherPayments: [], heldSessions: [],
   users: [], activity: [], feePayments: [], feeDiscounts: [],
-  ideas: [], offeringCounts: {},
+  ideas: [], offeringCounts: {}, trash: [],
 };
 let editingStudentId = null;
 let editingCourseId = null;
@@ -291,6 +292,7 @@ els.bankDate.value = today;
 els.feeMonth.value = thisMonth;
 els.reportPeriodMonth.value = thisMonth;
 els.reportPeriodDate.value = today;
+els.reportPeriodYear.value = Number(thisMonth.slice(0, 4));
 
 /* ================= helpers ================= */
 
@@ -482,9 +484,21 @@ const db = {
     }));
   },
 
+  async loadTrash() {
+    state.trash = [];
+    if (!isAdmin()) return;
+    // Drop entries older than 30 days so the trash never grows unbounded.
+    await safe(sb.rpc("purge_deleted_students", { p_days: 30 }));
+    const data = await safe(sb.from("students").select("id, student_number, name, year_level, deleted_at").not("deleted_at", "is", null).order("deleted_at", { ascending: false }).limit(100));
+    state.trash = (data || []).map((r) => ({
+      id: r.id, studentNumber: r.student_number || "", name: r.name || "",
+      year: r.year_level || "", deletedAt: r.deleted_at,
+    }));
+  },
+
   async loadAll() {
     await db.loadCore();
-    await Promise.all([db.loadStudents(), db.loadFinance(), db.loadPayroll(), db.loadAdmin(), db.loadIdeas()]);
+    await Promise.all([db.loadStudents(), db.loadFinance(), db.loadPayroll(), db.loadAdmin(), db.loadIdeas(), db.loadTrash()]);
   },
 };
 
@@ -575,16 +589,79 @@ function closeSidebar() {
   document.querySelector(".sidebar-backdrop")?.remove();
 }
 
-els.adminToolsToggle.addEventListener("click", () => {
-  const open = els.adminToolsBody.hidden;
-  els.adminToolsBody.hidden = !open;
-  els.adminToolsToggle.setAttribute("aria-expanded", String(open));
-});
-
 
 function showLogin() {
   els.loginView.hidden = false;
   els.appShell.hidden = true;
+}
+
+/* ================= in-app history =================
+
+The app keeps one browser entry for the current section. Backing from a
+detail page closes that page, backing from any other section returns Home,
+and backing out of Home asks before actually leaving the site. Detail pages
+get their own entries so device back closes them and forward re-opens them. */
+
+let currentRoute = "dashboard";
+let historyReady = false;
+
+function setAppState(stateObj, method) {
+  try { history[method](stateObj, ""); } catch { /* ignore */ }
+}
+
+function pushDetailState(detailState) {
+  setAppState(detailState, "pushState");
+}
+
+function initHistoryNav() {
+  if (historyReady) return;
+  historyReady = true;
+  try {
+    history.replaceState({ ccm: "root" }, "");
+    history.pushState({ ccm: "app", view: currentRoute }, "");
+  } catch { /* ignore */ }
+  window.addEventListener("popstate", (event) => {
+    const st = event.state || {};
+    // A detail overlay is open and history moved past its entry: close it first.
+    if (!els.studentDetailPage.hidden && st.ccm !== "student-detail") {
+      els.studentDetailPage.hidden = true;
+      return;
+    }
+    if (!els.feeDetailPage.hidden && st.ccm !== "fee-detail") {
+      editingReceiptId = null;
+      els.feeDetailPage.hidden = true;
+      return;
+    }
+    // Traveling into a saved detail entry re-opens that page without new history.
+    if (st.ccm === "student-detail") {
+      els.studentDetailPage.hidden = false;
+      els.studentForm.hidden = false;
+      els.studentDetailTitle.textContent = st.title || "Student";
+      switchView(st.view || "students", viewTitle(st.view || "students"), false);
+      return;
+    }
+    if (st.ccm === "fee-detail") {
+      if (st.studentId) openFeeDetail(st.studentId, false);
+      return;
+    }
+    // A saved app entry returns to that section.
+    if (st.ccm === "app" && st.view && currentUser && canView(st.view)) {
+      currentRoute = st.view;
+      switchView(st.view, viewTitle(st.view));
+      return;
+    }
+    // Past the saved entries: any section first returns Home, and only from
+    // Home does back ask before actually leaving the site.
+    if (currentUser && (currentRoute || "dashboard") !== "dashboard") {
+      switchView("dashboard", viewTitle("dashboard"));
+      return;
+    }
+    if (confirm(t("msgLeaveConfirm"))) {
+      history.go(-1);
+      return;
+    }
+    setAppState({ ccm: "app", view: "dashboard" }, "pushState");
+  });
 }
 
 function enterApp() {
@@ -593,6 +670,7 @@ function enterApp() {
   applyPermissions();
   renderAll();
   if (canView("fees")) refreshFees();
+  initHistoryNav();
 }
 
 function isAdmin() { return !!(currentUser && currentUser.role === "admin"); }
@@ -614,6 +692,7 @@ function canEditTab(tab) {
   if (!currentUser) return false;
   if (isManager()) return true;
   if (["viewer", "student", "teacher"].includes(currentUser.role)) return false;
+  if (tab === "students") return currentUser.role === "editor" && (currentUser.tabs || []).includes("students");
   if (tab === "money") return !!currentUser.moneyEdit;
   return (currentUser.tabs || []).includes(tab);
 }
@@ -631,7 +710,7 @@ function applyPermissions() {
   document.querySelectorAll("#mainNav .nav-tab").forEach((tab) => {
     tab.style.display = canView(tab.dataset.view) ? "" : "none";
   });
-  els.adminTools.style.display = isAdmin() ? "" : "none";
+  els.adminTools.hidden = !isAdmin();
   els.userBadge.innerHTML = currentUser
     ? `<strong>${escapeHtml(currentUser.username)}</strong><span>${escapeHtml(roleLabel(currentUser.role))}</span>`
     : "";
@@ -648,17 +727,19 @@ function applyPermissions() {
   els.bankOpeningBox.style.display = isManager() ? "" : "none";
   els.payPayPanel.style.display = isManager() ? "" : "none";
   els.usersSection.style.display = isAdmin() ? "" : "none";
+  els.trashSection.hidden = !isAdmin();
 }
 
 function setFormEditable(form, editable) {
   if (form) form.style.display = editable ? "" : "none";
 }
 
-function switchView(viewId, title) {
+function switchView(viewId, title, updateHistory = true) {
   if (currentUser && !canView(viewId)) {
     toast(["settings", "activity", "reports"].includes(viewId) ? t("msgAdminOnly") : t("msgNoViewPerm"));
     return;
   }
+  currentRoute = viewId;
   document.querySelectorAll(".nav-tab").forEach((tab) => tab.classList.toggle("active", tab.dataset.view === viewId));
   document.querySelectorAll("#mobileBottomNav button").forEach((tab) => {
     const active = tab.dataset.view === viewId || (viewId !== "dashboard" && viewId !== "reminders" && viewId !== "students" && viewId !== "fees" && tab.dataset.view === "more");
@@ -671,6 +752,12 @@ function switchView(viewId, title) {
   if (isMobileMenu()) closeSidebar();
   const content = document.querySelector(".content");
   if (content) content.scrollIntoView({ block: "start" });
+  if (updateHistory && historyReady) {
+    const st = history.state || {};
+    if (st.ccm === "app") setAppState({ ccm: "app", view: viewId }, "replaceState");
+    else setAppState({ ccm: "app", view: viewId }, "pushState");
+  }
+  if (viewId === "attendance") renderAttendanceClasses();
 }
 
 document.querySelectorAll(".nav-tab, #mobileBottomNav button").forEach((tab) => {
@@ -736,24 +823,36 @@ async function downscaleImage(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+  const sourceMime = /^data:([^;]+);/.exec(dataUrl)?.[1] || file.type || "image/jpeg";
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      const maxSide = 1280;
+      const maxSide = 1024;
       const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+      // Already small and light: send the original bytes untouched for speed.
+      if (scale === 1 && dataUrl.length < 900_000) {
+        resolve({ image: dataUrl, mime: sourceMime });
+        return;
+      }
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(img.width * scale));
       canvas.height = Math.max(1, Math.round(img.height * scale));
       canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", 0.72));
+      resolve({ image: canvas.toDataURL("image/jpeg", 0.62), mime: "image/jpeg" });
     };
-    img.onerror = () => resolve(dataUrl);
+    img.onerror = () => resolve({ image: dataUrl, mime: sourceMime });
     img.src = dataUrl;
   });
 }
 
+function flashInvalid(el) {
+  if (!el) return;
+  el.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  el.classList.add("invalid-flash");
+  setTimeout(() => el.classList.remove("invalid-flash"), 1600);
+}
+
 function prefillFromScan(fields) {
-  resetStudentForm();
   let found = 0;
   const unmatched = [];
   if (fields.name) { els.studentName.value = String(fields.name); found++; }
@@ -790,8 +889,14 @@ function prefillFromScan(fields) {
     els.studentGroup.value = group;
     found++;
   }
+  const rows = [...els.studentCoursesBox.querySelectorAll(".course-pick")];
+  for (const row of rows) {
+    row.querySelector("input[type='checkbox']").checked = false;
+    row.querySelector("input[type='number']").disabled = true;
+    row.classList.remove("picked");
+  }
   for (const c of Array.isArray(fields.courses) ? fields.courses : []) {
-    const row = [...els.studentCoursesBox.querySelectorAll(".course-pick")].find((rowEl) => {
+    const row = rows.find((rowEl) => {
       return rowEl.querySelector("input[type='checkbox']").value === c.courseId;
     });
     if (row) {
@@ -807,49 +912,58 @@ function prefillFromScan(fields) {
       unmatched.push(c.label);
     }
   }
-  els.studentForm.hidden = false;
-  els.showStudentFormBtn.hidden = true;
-  const drop = els.studentCoursesBox.closest("details");
-  if (drop) drop.open = true;
-  switchView("students", viewTitle("students"));
+  if (editingStudentId) {
+    const current = state.students.find((s) => s.id === editingStudentId);
+    els.studentDetailTitle.textContent = current ? current.name : "Edit student";
+  } else {
+    els.studentDetailTitle.textContent = "New student";
+  }
   return { found, unmatched };
+}
+
+function setScanStatus(message, kind) {
+  els.scanStatus.hidden = !message;
+  els.scanStatus.textContent = message || "";
+  els.scanStatus.classList.toggle("working", kind === "working");
+  els.scanStatus.classList.toggle("ok", kind === "ok");
+  els.scanStatus.classList.toggle("fail", kind === "fail");
 }
 
 els.scanFileInput.addEventListener("change", async () => {
   const file = els.scanFileInput.files[0];
   if (!file) return;
-  if (!file.type.startsWith("image/")) { toast(t("msgScanImage")); return; }
+  if (!file.type.startsWith("image/")) { setScanStatus(t("msgScanImage"), "fail"); return; }
   els.scanBtn.disabled = true;
-  toast(t("msgScanning"));
+  setScanStatus(t("msgScanning"), "working");
   try {
-    const imageData = await downscaleImage(file);
+    const { image, mime } = await downscaleImage(file);
     const { data, error } = await sb.functions.invoke("scan-form", {
       body: {
-        image: imageData,
-        mime: "image/jpeg",
+        image,
+        mime,
         courses: state.courses.map((c) => ({ id: c.id, name: c.name })),
       },
     });
     if (error) {
       const real = await edgeErrorMessage(error);
       if (/not found/i.test(real)) {
-        toast(t("msgScanNoFunc"));
+        setScanStatus(t("msgScanNoFunc"), "fail");
       } else if (real) {
-        toast(real);
+        setScanStatus(real, "fail");
       } else {
-        toast(t("msgScanFail"));
+        setScanStatus(t("msgScanFail"), "fail");
       }
       console.warn("scan-form error:", error, real);
       return;
     }
     const { found, unmatched } = prefillFromScan(data?.fields || {});
     if (found > 0) {
-      toast(`${toNum(found)} ${t("msgScanDone")}${unmatched.length ? ` — ${t("msgScanUnmatched")} ${unmatched.join(", ")}` : ""}`);
+      setScanStatus(`${toNum(found)} fields filled automatically — review everything before saving.${unmatched.length ? ` Could not match: ${unmatched.join(", ")}` : ""}`, "ok");
     } else {
-      toast(t("msgScanEmpty"));
+      setScanStatus("Nothing readable from the photo — fill the form manually.", "fail");
     }
   } catch (err) {
-    fail(err);
+    setScanStatus(err?.message || t("msgScanFail"), "fail");
   } finally {
     els.scanBtn.disabled = false;
     els.scanFileInput.value = "";
@@ -885,28 +999,40 @@ function renderStudentOptions() {
 }
 
 function renderStudentCourseBox() {
+  const target = editingStudentId || "new";
   const student = editingStudentId ? state.students.find((s) => s.id === editingStudentId) : null;
   const enrolled = student ? student.enrollments : [];
-  const prev = new Map(
-    [...els.studentCoursesBox.querySelectorAll(".course-pick")].map((row) => [
-      row.querySelector("input[type='checkbox']").value,
-      { checked: row.querySelector("input[type='checkbox']").checked, fee: row.querySelector("input[type='number']").value },
-    ]),
-  );
-  els.studentCoursesBox.innerHTML = state.courses.length
-    ? state.courses.map((c) => {
-        const saved = enrolled.find((e) => e.courseId === c.id);
-        const prevRow = prev.get(c.id);
-        const checked = prevRow ? prevRow.checked : !!saved;
-        const fee = prevRow ? prevRow.fee : (saved ? saved.fee : (c.fee ?? 0));
-        return `
+  // Preserve live form state only when the box still belongs to this target;
+  // otherwise a fresh render starts from the saved enrollments.
+  const sameTarget = els.studentCoursesBox.dataset.for === target;
+  const prev = sameTarget
+    ? new Map(
+        [...els.studentCoursesBox.querySelectorAll(".course-pick")].map((row) => [
+          row.querySelector("input[type='checkbox']").value,
+          { checked: row.querySelector("input[type='checkbox']").checked, fee: row.querySelector("input[type='number']").value },
+        ]),
+      )
+    : new Map();
+  const rowHtml = (c) => {
+    const saved = enrolled.find((e) => e.courseId === c.id);
+    const prevRow = prev.get(c.id);
+    const checked = prevRow ? prevRow.checked : !!saved;
+    const fee = prevRow ? prevRow.fee : (saved ? saved.fee : (c.fee ?? 0));
+    return `
           <div class="course-pick${checked ? " picked" : ""}">
             <label class="check-line">
-              <input type="checkbox" value="${c.id}" ${checked ? "checked" : ""} /> ${escapeHtml(c.name)} <span class="badge">${courseTypeLabel(c.type)}</span>
+              <input type="checkbox" value="${c.id}" ${checked ? "checked" : ""} /> ${escapeHtml(c.name)}
             </label>
             <input type="number" min="0" step="100" value="${Number(fee || 0)}" ${checked ? "" : "disabled"} aria-label="${tr("cMonthlyFee")}" />
           </div>`;
-      }).join("")
+  };
+  const groupHtml = (type, title) => {
+    const rows = state.courses.filter((c) => c.type === type);
+    return `<div class="course-pick-group"><h4>${title} · ${toNum(rows.length)}</h4><div class="course-pick-box course-pick-scroll">${rows.length ? rows.map(rowHtml).join("") : `<span class="muted-note">${t("noCourse")}</span>`}</div></div>`;
+  };
+  els.studentCoursesBox.dataset.for = target;
+  els.studentCoursesBox.innerHTML = state.courses.length
+    ? `<div class="course-pick-groups">${groupHtml("subject", "Subjects")}${groupHtml("package", "Packages")}</div>`
     : `<span class="muted-note">${t("noCourse")}</span>`;
   els.studentCoursesBox.querySelectorAll(".course-pick").forEach((row) => {
     const box = row.querySelector("input[type='checkbox']");
@@ -933,21 +1059,21 @@ els.studentForm.addEventListener("submit", async (event) => {
   if (!requireEdit("students")) return;
   const name = els.studentName.value.trim();
   const phone = els.studentPhone.value.trim();
-  if (!name) { toast(t("msgNameReq")); els.studentName.focus(); return; }
-  if (!phone) { toast(t("msgPhoneReq")); els.studentPhone.focus(); return; }
-  if (!els.studentCollege.value) { toast(t("msgCollegeReq")); return; }
-  if (!els.studentGroup.value) { toast(t("msgGroupReq")); return; }
+  if (!name) { toast(t("msgNameReq")); flashInvalid(els.studentName); return; }
+  if (!phone) { toast(t("msgPhoneReq")); flashInvalid(els.studentPhone); return; }
+  if (!els.studentCollege.value) { toast(t("msgCollegeReq")); flashInvalid(els.studentCollege); return; }
+  if (!els.studentGroup.value) { toast(t("msgGroupReq")); flashInvalid(els.studentGroup); return; }
   const enrollments = [];
   for (const row of els.studentCoursesBox.querySelectorAll(".course-pick")) {
     const box = row.querySelector("input[type='checkbox']");
     if (!box.checked) continue;
     const fee = Number(row.querySelector("input[type='number']").value === "" ? 0 : row.querySelector("input[type='number']").value);
-    if (Number.isNaN(fee) || fee < 0) { toast(t("msgFeeNeg")); return; }
+    if (Number.isNaN(fee) || fee < 0) { toast(t("msgFeeNeg")); flashInvalid(row.querySelector("input[type='number']")); return; }
     enrollments.push({ course_id: box.value, fee });
   }
-  if (!enrollments.length) { toast(t("msgPickCourse")); return; }
+  if (!enrollments.length) { toast(t("msgPickCourse")); flashInvalid(els.coursePickSection); return; }
   const admissionPaid = Number(els.admissionPaid.value === "" ? 0 : els.admissionPaid.value);
-  if (admissionPaid < state.settings.admissionFee) { toast(t("msgAdmissionShort")); return; }
+  if (admissionPaid < state.settings.admissionFee) { toast(t("msgAdmissionShort")); flashInvalid(els.admissionPaid); return; }
 
   const pStudent = {
     id: editingStudentId || "",
@@ -969,6 +1095,8 @@ els.studentForm.addEventListener("submit", async (event) => {
 
   const submitBtn = els.studentSubmitBtn;
   submitBtn.disabled = true;
+  submitBtn.dataset.originalLabel = submitBtn.textContent;
+  submitBtn.textContent = "Saving…";
   try {
     const { error } = await sb.rpc("save_student_with_admission", { p_student: pStudent, p_enrollments: enrollments });
     if (error) throw error;
@@ -979,23 +1107,34 @@ els.studentForm.addEventListener("submit", async (event) => {
     return;
   } finally {
     submitBtn.disabled = false;
+    if (submitBtn.dataset.originalLabel) {
+      submitBtn.textContent = submitBtn.dataset.originalLabel;
+      delete submitBtn.dataset.originalLabel;
+    }
   }
   resetStudentForm();
+  history.back();
   await db.loadStudents();
   await db.loadFinance();
   renderAll();
 });
 
-els.studentCancelBtn.addEventListener("click", resetStudentForm);
-els.studentBackBtn.addEventListener("click", resetStudentForm);
-els.showStudentFormBtn.addEventListener("click", () => {
+els.studentCancelBtn.addEventListener("click", () => {
+  resetStudentForm();
+  history.back();
+});
+els.studentBackBtn.addEventListener("click", () => history.back());
+function openNewStudentForm() {
   if (!requireEdit("students")) return;
+  const shouldPush = els.studentDetailPage.hidden;
   resetStudentForm();
   els.studentDetailPage.hidden = false;
   els.studentDetailTitle.textContent = "New student";
   els.studentForm.hidden = false;
+  if (shouldPush) pushDetailState({ ccm: "student-detail", view: currentRoute, title: "New student" });
   els.studentName.focus();
-});
+}
+els.showStudentFormBtn.addEventListener("click", openNewStudentForm);
 
 document.querySelectorAll("[data-student-status]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -1051,14 +1190,13 @@ function renderStudents() {
   });
   els.studentCards.innerHTML = students.length
     ? students.map((s) => {
-        const nameClass = s.name.length > 22 ? " long-name" : "";
         const waNumber = (s.whatsapp || "").replace(/\D/g, "");
         return `
-      <article class="student-card${editable ? " clickable" : ""}"${editable ? ` data-student-card="${s.id}" tabindex="0" role="button" aria-label="Open ${escapeHtml(s.name)}"` : ""}>
+      <article class="student-card">
         <div class="student-card-main">
           <div class="student-avatar" aria-hidden="true">${escapeHtml(s.name.trim().charAt(0).toUpperCase() || "S")}</div>
           <div class="student-card-copy">
-            <strong class="${nameClass.trim()}">${escapeHtml(s.name)}</strong>
+            <strong>${escapeHtml(s.name)}</strong>
             <span><span translate="no">${escapeHtml(s.studentNumber || "")}</span> · ${escapeHtml(yearLabel(s.year))}</span>
             <span class="admitted-line">Admitted ${escapeHtml(s.admissionDate || "—")}</span>
           </div>
@@ -1079,26 +1217,16 @@ function renderStudents() {
       }).join("")
     : emptyState(`No ${studentStatusFilter} students match this search.`);
 
-  document.querySelectorAll("[data-student-card]").forEach((card) => {
-    const open = () => startEditStudent(card.dataset.studentCard);
-    card.addEventListener("click", (event) => {
-      if (event.target.closest("button, a")) return;
-      open();
-    });
-    card.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); open(); }
-    });
-  });
   document.querySelectorAll("[data-edit-student]").forEach((button) => button.addEventListener("click", () => startEditStudent(button.dataset.editStudent)));
   document.querySelectorAll("[data-delete-student]").forEach((button) => button.addEventListener("click", async () => {
     if (!requireEdit("students")) return;
     const student = state.students.find((item) => item.id === button.dataset.deleteStudent);
     if (!student || !confirmDelete(`Delete ${student.name}?`)) return;
     try {
-      const { error } = await sb.from("students").delete().eq("id", student.id);
+      const { error } = await sb.rpc("soft_delete_student", { p_student: student.id });
       if (error) throw error;
     } catch (err) { fail(err); return; }
-    toast("Student deleted.");
+    toast("Student moved to trash — kept for 30 days.");
     logActivity("Delete student", student.name);
     await db.loadStudents();
     await db.loadFinance();
@@ -1111,9 +1239,11 @@ function startEditStudent(id) {
   const student = state.students.find((item) => item.id === id);
   if (!student) return;
   editingStudentId = id;
+  const shouldPush = els.studentDetailPage.hidden;
   els.studentDetailPage.hidden = false;
   els.studentDetailTitle.textContent = student.name;
   els.studentForm.hidden = false;
+  if (shouldPush) pushDetailState({ ccm: "student-detail", view: currentRoute, title: student.name });
   els.studentFormTitle.textContent = "Edit student";
   els.studentSubmitBtn.textContent = "Save changes";
   els.studentCancelBtn.hidden = false;
@@ -1217,25 +1347,32 @@ function startEditCourse(id) {
   els.courseName.focus();
 }
 
-function renderCourses() {
+function courseCard(course, count, extraClass) {
   const editable = canEditTab("courses");
+  return `
+    <article class="batch-card${extraClass ? " " + extraClass : ""}">
+      <strong>${escapeHtml(course.name)}</strong>
+      <span>${courseTypeLabel(course.type)} · ${formatMoney(course.fee || 0)}</span>
+      <p>${escapeHtml(course.duration || t("noDesc"))}</p>
+      <span class="badge">${toNum(count)} ${t("enrolledSuffix")}</span>
+      ${editable ? `<div class="inline-tools">
+        <button class="small-btn" type="button" data-edit-course="${course.id}">${t("edit")}</button>
+        <button class="small-btn" type="button" data-delete-course="${course.id}">${t("del")}</button>
+      </div>` : ""}
+    </article>`;
+}
+
+function renderCourses() {
   const filter = els.courseFilter.value;
-  const courses = state.courses.filter((c) => filter === "all" || c.type === filter);
-  els.courseCards.innerHTML = courses.length
-    ? courses.map((course) => {
-        const count = state.students.filter((s) => isEnrolled(s, course.id)).length;
-        return `
-          <article class="batch-card">
-            <strong>${escapeHtml(course.name)}</strong>
-            <span>${courseTypeLabel(course.type)} · ${formatMoney(course.fee || 0)}</span>
-            <p>${escapeHtml(course.duration || t("noDesc"))}</p>
-            <span class="badge">${toNum(count)} ${t("enrolledSuffix")}</span>
-            ${editable ? `<div class="inline-tools" style="margin-top: 10px">
-              <button class="small-btn" type="button" data-edit-course="${course.id}">${t("edit")}</button>
-              <button class="small-btn" type="button" data-delete-course="${course.id}">${t("del")}</button>
-            </div>` : ""}
-          </article>`;
-      }).join("")
+  const candidates = state.courses
+    .filter((c) => filter === "all" || c.type === filter)
+    .map((course) => ({ course, count: state.students.filter((s) => isEnrolled(s, course.id)).length }))
+    .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
+  const top = candidates.slice(0, 3);
+  const rest = candidates.slice(3);
+  els.courseCards.innerHTML = candidates.length
+    ? `<div class="course-top-grid">${top.map(({ course, count }) => courseCard(course, count, "top-course")).join("")}</div>` +
+      (rest.length ? `<div class="course-scroll">${rest.map(({ course, count }) => courseCard(course)).join("")}</div>` : "")
     : emptyState(t("emptyCourse"));
 
   document.querySelectorAll("[data-edit-course]").forEach((b) =>
@@ -1682,10 +1819,11 @@ function renderFees() {
   document.querySelectorAll("[data-fee-student]").forEach((button) => button.addEventListener("click", () => openFeeDetail(button.dataset.feeStudent)));
 }
 
-async function openFeeDetail(studentId) {
+async function openFeeDetail(studentId, push = true) {
   currentFeeStudentId = studentId;
   const student = state.students.find((item) => item.id === studentId);
   if (!student) return;
+  const shouldPush = push && els.feeDetailPage.hidden;
   const month = els.feeMonth.value || thisMonth;
   const invoices = invoicesFor(studentId, month);
   const due = monthDue(studentId, month);
@@ -1720,6 +1858,7 @@ async function openFeeDetail(studentId) {
     ${showForm ? `<form id="feeCollectionForm" class="fee-collection-form"><h3>${editing ? "Edit receipt" : "Collect payment"}</h3>${editing ? `<p class="muted-note">Saving replaces this receipt with the new amount and date.</p>` : ""}<div class="fee-amount-row"><label><span>Amount (৳)</span><input id="feePaymentAmount" type="number" min="0" max="${editBase}" step="0.01" value="${formAmount}" required /></label><label class="discount-option"><input id="feeDiscountToggle" type="checkbox" ${formDiscount ? "checked" : ""} /><span>Discount</span></label></div><p id="feeDiscountPreview" class="discount-preview" hidden></p><label><span>Payment date</span><input id="feePaymentDate" type="date" value="${formDate}" required /></label><div class="form-actions"><button id="collectFeeBtn" class="primary-btn" type="submit">${editing ? "Update receipt" : "Collect"}</button>${editing ? `<button type="button" id="cancelEditReceiptBtn" class="secondary-btn">Cancel edit</button>` : ""}</div></form>` : ""}
     <section class="fee-detail-section"><h3>Collection history</h3><div class="fee-history-list">${historyHtml}</div></section>`;
   els.feeDetailPage.hidden = false;
+  if (shouldPush) pushDetailState({ ccm: "fee-detail", studentId, view: currentRoute });
   els.feeDetailBody.querySelectorAll("[data-print-history]").forEach((button) => button.addEventListener("click", () => printExistingReceipt(button.dataset.printHistory, student, history)));
   els.feeDetailBody.querySelectorAll("[data-edit-receipt]").forEach((button) => button.addEventListener("click", () => {
     editingReceiptId = button.dataset.editReceipt;
@@ -1827,10 +1966,7 @@ function printExistingReceipt(receiptId, student, history) {
   openReceipt({ student, month: String(item.month || "").slice(0, 7), receiptId, paid: Number(item.paid || 0), discount: Number(item.discount || 0), remaining: Number(item.remaining || 0), paymentDate: item.paymentDate || today, recordedAt: item.recordedAt || new Date().toISOString() });
 }
 
-els.feeBackBtn.addEventListener("click", () => {
-  editingReceiptId = null;
-  els.feeDetailPage.hidden = true;
-});
+els.feeBackBtn.addEventListener("click", () => history.back());
 els.closeReceiptBtn.addEventListener("click", () => els.receiptDialog.close());
 els.printReceiptBtn.addEventListener("click", () => window.print());
 els.feeFilter.addEventListener("change", renderFees);
@@ -2122,7 +2258,51 @@ function renderSettings() {
   els.setAdmissionFee.value = state.settings.admissionFee;
   renderChips(els.collegesBox, state.settings.colleges, "college");
   renderChips(els.groupsBox, state.settings.groups, "group");
+  renderTrash();
 }
+
+function renderTrash() {
+  if (!isAdmin()) { els.trashRows.innerHTML = ""; return; }
+  els.trashRows.innerHTML = state.trash.length
+    ? state.trash.map((student) => {
+        const days = Math.max(0, 30 - Math.floor((Date.now() - new Date(student.deletedAt).getTime()) / 86400000));
+        return `<div class="trash-row">
+          <div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)} · deleted ${escapeHtml(new Date(student.deletedAt).toLocaleDateString("en-GB"))} · ${days} day${days === 1 ? "" : "s"} left</span></div>
+          <div class="inline-tools">
+            <button type="button" class="small-btn" data-restore-student="${student.id}">Restore</button>
+            <button type="button" class="small-btn danger" data-forever-student="${student.id}">Delete forever</button>
+          </div>
+        </div>`;
+      }).join("")
+    : emptyState("Trash is empty. Deleted students wait here for 30 days.");
+  els.trashRows.querySelectorAll("[data-restore-student]").forEach((button) => button.addEventListener("click", async () => {
+    const { error } = await sb.rpc("restore_deleted_student", { p_student: button.dataset.restoreStudent });
+    if (error) { fail(error); return; }
+    toast("Student restored.");
+    await db.loadTrash();
+    await db.loadStudents();
+    renderAll();
+  }));
+  els.trashRows.querySelectorAll("[data-forever-student]").forEach((button) => button.addEventListener("click", async () => {
+    const student = state.trash.find((item) => item.id === button.dataset.foreverStudent);
+    if (!student || !confirmDelete(`Permanently delete ${student.name}? This cannot be undone.`)) return;
+    const { error } = await sb.rpc("delete_student_forever", { p_student: student.id });
+    if (error) { fail(error); return; }
+    toast("Deleted forever.");
+    await db.loadTrash();
+    renderAll();
+  }));
+}
+
+els.purgeTrashBtn.addEventListener("click", async () => {
+  if (!isAdmin()) return;
+  if (!confirm("Delete all trash entries older than 30 days?")) return;
+  const { data, error } = await sb.rpc("purge_deleted_students", { p_days: 30 });
+  if (error) { fail(error); return; }
+  toast(`Old trash cleaned (${toNum(data || 0)} entries).`);
+  await db.loadTrash();
+  renderAll();
+});
 
 function renderChips(box, items, kind) {
   box.innerHTML = items.length
@@ -2732,20 +2912,35 @@ function renderReminders() {
   const [year, month] = today.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const leapYear = new Date(year, 1, 29).getMonth() === 1;
-  const reminders = state.students.filter((student) => student.status === "active").flatMap((student) => {
-    const matches = [];
+  const reminders = [];
+  for (const student of state.students.filter((s) => s.status === "active")) {
+    const due = studentTotalDue(student.id);
     const birthday = student.birthday?.slice(5);
-    if (birthday === monthDay || (!leapYear && monthDay === "02-28" && birthday === "02-29")) matches.push({ student, kind: "Birthday" });
-    if (student.admissionDate) {
-      const anniversaryDay = Math.min(Number(student.admissionDate.slice(8, 10)), lastDay);
-      if (Number(today.slice(8, 10)) === anniversaryDay) matches.push({ student, kind: "Monthly fee due" });
+    const anniversaryToday = student.admissionDate ? Math.min(Number(student.admissionDate.slice(8, 10)), lastDay) === Number(today.slice(8, 10)) : false;
+    if (birthday === monthDay || (!leapYear && monthDay === "02-28" && birthday === "02-29")) {
+      reminders.push({ student, kind: "Birthday", amount: 0, daily: false });
     }
-    return matches;
-  }).filter(({ student, kind }) => !dismissed.has(`${student.id}|${kind}`));
-  els.reminderRows.innerHTML = reminders.length ? reminders.map(({ student, kind }) => {
-    const key = `${student.id}|${kind}`;
-    return `<article class="reminder-card"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${kind}</span></div><span class="badge ${kind === "Birthday" ? "paid" : "due"}">${kind}</span><button type="button" class="reminder-clear" data-dismiss-reminder="${escapeHtml(key)}" aria-label="Clear reminder for ${escapeHtml(student.name)}">✕</button></article>`;
-  }).join("") : emptyState("No birthdays or monthly fee reminders today.");
+    if (anniversaryToday) {
+      reminders.push({ student, kind: "Monthly fee due", amount: due, daily: false });
+    } else if (due > 0) {
+      reminders.push({ student, kind: "Fee due", amount: due, daily: true });
+    }
+  }
+  const visible = reminders.filter((item) => !dismissed.has(`${item.student.id}|${item.kind}`));
+  els.reminderRows.innerHTML = visible.length ? visible.map((item) => {
+    const key = `${item.student.id}|${item.kind}`;
+    const amountLine = item.amount > 0 ? `<span class="badge due">${t("due")} ${formatMoney(item.amount)}</span>` : "";
+    return `<article class="reminder-card ${item.kind === "Birthday" ? "reminder-birthday" : "reminder-due"}">
+      <div class="student-avatar" aria-hidden="true">${escapeHtml(item.student.name.charAt(0).toUpperCase())}</div>
+      <div class="reminder-copy">
+        <strong>${escapeHtml(item.student.name)}</strong>
+        <span><span translate="no">${escapeHtml(item.student.studentNumber || "")}</span> · ${escapeHtml(yearLabel(item.student.year))}</span>
+      </div>
+      <span class="badge ${item.kind === "Birthday" ? "paid" : "due"}">${item.kind}</span>
+      ${amountLine}
+      <button type="button" class="reminder-clear" data-dismiss-reminder="${escapeHtml(key)}" aria-label="Clear reminder for ${escapeHtml(item.student.name)}">✕</button>
+    </article>`;
+  }).join("") : emptyState("No birthdays or fee reminders today.");
   els.reminderRows.querySelectorAll("[data-dismiss-reminder]").forEach((button) => button.addEventListener("click", () => {
     const set = loadDismissedReminders();
     set.add(button.dataset.dismissReminder);
@@ -2754,7 +2949,8 @@ function renderReminders() {
   }));
 }
 
-function donutChart(segments, centerLabel) {
+function donutChart(segments, centerValue, centerCaption, fmt) {
+  const format = fmt || formatMoney;
   const total = segments.reduce((s, x) => s + x.value, 0);
   if (!total) return emptyState("Nothing in this period.");
   const colors = ["#2f9e63", "#e08a3c", "#4a7fd6", "#c0504d", "#8a63d2"];
@@ -2768,8 +2964,11 @@ function donutChart(segments, centerLabel) {
     offset += frac * circumference;
     return arc;
   }).join("");
-  const legend = segments.map((seg, index) => `<li><span class="dot" style="background:${seg.color || colors[index % colors.length]}"></span>${escapeHtml(seg.label)} · ${formatMoney(seg.value)}</li>`).join("");
-  return `<div class="donut"><svg viewBox="0 0 120 120" role="img" aria-label="${escapeHtml(centerLabel)}">${arcs}<text x="60" y="64" text-anchor="middle">${escapeHtml(centerLabel)}</text><text x="60" y="78" text-anchor="middle" class="donut-sub">${escapeHtml(centerLabel)}</text></svg></div><ul class="donut-legend">${legend}</ul>`;
+  const legend = segments.map((seg, index) => {
+    const pct = Math.round((seg.value / total) * 100);
+    return `<li><span class="dot" style="background:${seg.color || colors[index % colors.length]}"></span>${escapeHtml(seg.label)} · ${pct}% · ${format(seg.value)}</li>`;
+  }).join("");
+  return `<div class="donut"><svg viewBox="0 0 120 120" role="img" aria-label="${escapeHtml(centerCaption)}">${arcs}<text x="60" y="62" text-anchor="middle" class="donut-value">${escapeHtml(centerValue)}</text><text x="60" y="76" text-anchor="middle" class="donut-sub">${escapeHtml(centerCaption)}</text></svg></div><ul class="donut-legend">${legend}</ul>`;
 }
 
 function reportRange() {
@@ -2801,6 +3000,12 @@ function reportRange() {
     }
     return { start: startIso, end: endIso, label: `${startIso} → ${endIso}`, months };
   }
+  if (reportPeriod === "year") {
+    const yearValue = String(els.reportPeriodYear.value || thisMonth.slice(0, 4));
+    const months = [];
+    for (let m = 1; m <= 12; m++) months.push(`${yearValue}-${String(m).padStart(2, "0")}`);
+    return { start: `${yearValue}-01-01`, end: `${yearValue}-12-31`, label: `Year ${yearValue}`, months };
+  }
   const month = els.reportPeriodMonth.value || thisMonth;
   const [y, m] = month.split("-").map(Number);
   const lastDay = new Date(y, m, 0).getDate();
@@ -2831,29 +3036,19 @@ function renderReports() {
   els.reportCollection.textContent = formatMoney(cash);
   els.reportDue.textContent = formatMoney(due);
   els.reportDiscount.textContent = formatMoney(discounts);
-  els.reportSummaryText.textContent = `${range.label}: fee collection ${formatMoney(cash)}, income ${formatMoney(income)}, expense ${formatMoney(expense)}, due ${formatMoney(due)}.`;
 
   els.chartReportFee.innerHTML = donutChart([
-    { label: "Collected", value: collected },
-    { label: "Due", value: due },
-  ], `${Math.round((collected / Math.max(1, collected + due)) * 100)}%`);
+    { label: "Collected", value: collected, color: "#2f9e63" },
+    { label: "Due", value: due, color: "#e08a3c" },
+  ], `${Math.round((collected / Math.max(1, collected + due)) * 100)}%`, "fee paid", formatMoney);
   els.chartReportMoney.innerHTML = donutChart([
-    { label: "Income", value: income },
-    { label: "Expense", value: expense },
-  ], `${formatMoney(income - expense)}`);
+    { label: "Income", value: income, color: "#2f9e63" },
+    { label: "Expense", value: expense, color: "#e08a3c" },
+  ], formatMoney(income - expense), "net", formatMoney);
   els.chartReportStudents.innerHTML = donutChart([
-    { label: "Active", value: active },
-    { label: "Inactive", value: inactive },
-  ], `${toNum(state.students.length)}`);
-
-  const withDue = state.students
-    .map((student) => ({ student, amount: state.invoices.filter((invoice) => range.months.includes(invoice.month) && invoice.studentId === student.id).reduce((sum, invoice) => sum + invoiceDue(invoice), 0) }))
-    .filter((row) => row.amount > 0)
-    .sort((a, b) => b.amount - a.amount)
-    .slice(0, 8);
-  els.reportStudentDues.innerHTML = withDue.length
-    ? withDue.map(({ student, amount }) => `<div class="compact-item"><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)} · ${escapeHtml(yearLabel(student.year))}</span></div><span class="badge due">${formatMoney(amount)}</span></div>`).join("")
-    : emptyState("No student dues in this period.");
+    { label: "Active", value: active, color: "#2f9e63" },
+    { label: "Inactive", value: inactive, color: "#e08a3c" },
+  ], toNum(state.students.length), "students", toNum);
 
   const openDues = state.dues.filter((d) => !d.paid);
   const paidDues = state.dues.filter((d) => d.paid);
@@ -2874,13 +3069,15 @@ document.querySelectorAll("[data-report-period]").forEach((button) => {
   button.addEventListener("click", () => {
     reportPeriod = button.dataset.reportPeriod;
     document.querySelectorAll("[data-report-period]").forEach((item) => item.classList.toggle("active", item === button));
-    els.reportPeriodDate.hidden = reportPeriod === "month";
+    els.reportPeriodDate.hidden = reportPeriod !== "day" && reportPeriod !== "week";
     els.reportPeriodMonth.hidden = reportPeriod !== "month";
+    els.reportPeriodYear.hidden = reportPeriod !== "year";
     renderReports();
   });
 });
 els.reportPeriodDate.addEventListener("change", renderReports);
 els.reportPeriodMonth.addEventListener("change", renderReports);
+els.reportPeriodYear.addEventListener("change", renderReports);
 
 const IDEA_LABELS = ["New", "Approve", "Planning", "On Going", "Completed"];
 

@@ -8,6 +8,9 @@
 //   3. Leave "Verify JWT with Supabase Auth" ON.
 //
 // The app falls back to browser signUp if this function is not deployed.
+// Only SUPABASE_SERVICE_ROLE_KEY is required here; the caller's JWT is verified
+// through the service-role client's admin.getUser(jwt), so no anon key secret
+// is needed and a missing SUPABASE_ANON_KEY no longer breaks user deletion.
 
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 
@@ -22,21 +25,18 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
 
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
-  if (!serviceKey || !anonKey) return json({ error: "missing env secrets" }, 500);
+  if (!serviceKey) return json({ error: "missing SUPABASE_SERVICE_ROLE_KEY" }, 500);
 
   const origin = new URL(req.url).origin;
-
-  // Caller client carries the admin's JWT, so profile RLS applies.
-  const caller: SupabaseClient = createClient(origin, anonKey, {
-    global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
-  });
-  const { data: { user } } = await caller.auth.getUser();
-  if (!user) return json({ error: "unauthorized" }, 401);
-  const { data: prof } = await caller.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  if (!prof || prof.role !== "admin") return json({ error: "forbidden" }, 403);
-
   const admin: SupabaseClient = createClient(origin, serviceKey);
+
+  const authHeader = req.headers.get("Authorization") ?? "";
+  const jwt = authHeader.replace(/^Bearer\s+/i, "");
+  if (!jwt) return json({ error: "unauthorized" }, 401);
+  const { data: { user }, error: verifyErr } = await admin.auth.getUser(jwt);
+  if (verifyErr || !user) return json({ error: "unauthorized" }, 401);
+  const { data: prof } = await admin.from("profiles").select("role").eq("id", user.id).maybeSingle();
+  if (!prof || prof.role !== "admin") return json({ error: "forbidden" }, 403);
 
   let body: Record<string, unknown>;
   try {
@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
     const { error: profileErr } = await admin.from("profiles").upsert({
       id: created.user.id,
       username: String(profile.username ?? email),
-      role: String(profile.role ?? "viewer"),
+      role,
       tabs: profile.tabs ?? ["dashboard"],
       money_edit: !!profile.money_edit,
       teacher_courses: profile.teacher_courses ?? [],
@@ -82,8 +82,13 @@ Deno.serve(async (req) => {
   if (body.action === "delete") {
     const id = String(body.id ?? "");
     if (!id || id === user.id) return json({ error: "invalid target user" }, 400);
-    const { error: profileErr } = await admin.from("profiles").delete().eq("id", id);
-    if (profileErr) return json({ error: profileErr.message }, 400);
+    const { data: target } = await admin.from("profiles").select("role").eq("id", id).maybeSingle();
+    if (target?.role === "admin") return json({ error: "super admin cannot be deleted" }, 403);
+    // Delete the Auth user first. profiles.id references auth.users with
+    // ON DELETE CASCADE, so the profile row follows automatically; historical
+    // attribution FKs use ON DELETE SET NULL and keep their rows intact.
+    // Deleting the profile first would break user removal whenever the Auth
+    // delete then failed, leaving a half-deleted account.
     const { error: authErr } = await admin.auth.admin.deleteUser(id);
     if (authErr) return json({ error: authErr.message }, 400);
     return json({ ok: true });

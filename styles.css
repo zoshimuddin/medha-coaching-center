@@ -211,55 +211,6 @@ button {
   background: rgba(255, 255, 255, 0.2);
 }
 
-.admin-tools {
-  border-top: 1px solid rgba(255, 255, 255, 0.12);
-  padding-top: 12px;
-}
-
-.admin-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  width: 100%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  color: #ffffff;
-  font-weight: 700;
-  font-size: 14px;
-  padding: 10px 12px;
-  min-height: 42px;
-  cursor: pointer;
-}
-
-.admin-toggle:hover {
-  background: rgba(255, 255, 255, 0.14);
-}
-
-.admin-chevron {
-  transition: transform 0.2s ease;
-  font-size: 12px;
-}
-
-.admin-toggle[aria-expanded="true"] .admin-chevron {
-  transform: rotate(180deg);
-}
-
-.admin-tools-body {
-  display: grid;
-  gap: 8px;
-  padding-top: 10px;
-}
-
-.admin-tools .secondary-btn,
-.admin-tools .danger-btn {
-  width: 100%;
-  padding: 9px 12px;
-  min-height: 40px;
-  font-size: 14px;
-}
-
 /* ---------- mobile top bar (mobile only) ---------- */
 
 .mobile-bar {
@@ -1278,12 +1229,28 @@ td {
 .boot-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(244, 247, 251, 0.88);
-  display: grid;
-  place-items: center;
+  background: var(--page);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
   z-index: 90;
-  font-weight: 800;
+  font-weight: 700;
   color: var(--accent-strong);
+}
+
+.boot-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 3px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: boot-spin 0.85s linear infinite;
+}
+
+@keyframes boot-spin {
+  to { transform: rotate(360deg); }
 }
 
 .toast {
@@ -1373,58 +1340,48 @@ td {
   }
 
   .mobile-bar {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr minmax(0, auto) 1fr;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     background: #0d2440;
     color: #ffffff;
-    padding: 10px 14px;
+    padding: 8px 12px;
+    min-height: 54px;
     position: sticky;
     top: 0;
     z-index: 40;
   }
 
-  .menu-btn {
-    background: rgba(255, 255, 255, 0.12);
-    border: 0;
-    border-radius: 8px;
-    color: #ffffff;
-    font-size: 20px;
+  .bar-side {
+    width: 6px;
+  }
+
+  .mobile-brand-name {
+    justify-self: center;
+    font-size: 17px;
     font-weight: 800;
-    width: 44px;
-    height: 44px;
-    min-height: 44px;
-    cursor: pointer;
-    display: grid;
-    place-items: center;
-  }
-
-  .menu-btn:hover {
-    background: rgba(255, 255, 255, 0.2);
-  }
-
-  .mobile-brand {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 16px;
-    min-width: 0;
-    flex: 1;
-    justify-content: center;
-  }
-
-  .mobile-brand .brand-mark,
-  .mobile-brand .brand-logo {
-    width: 36px;
-    height: 36px;
-    flex-basis: 36px;
-    font-size: 18px;
-  }
-
-  .mobile-brand strong {
+    letter-spacing: 0.3px;
+    max-width: 46vw;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .mobile-bar-title {
+    justify-self: end;
+    max-width: 36vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #9fc3ec;
+    font-size: 12.5px;
+    font-weight: 700;
+    text-align: right;
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    padding: 6px 12px;
   }
 
   .sidebar {
@@ -1880,7 +1837,7 @@ td {
 .student-card-leading-actions .icon-action { width: 44px; height: 44px; }
 .student-avatar { width: 58px; height: 58px; flex: 0 0 58px; display: grid; place-items: center; border-radius: 50%; background: #e3e5e7; font-size: 24px; font-weight: 800; }
 .student-card-copy { display: grid; gap: 2px; min-width: 0; flex: 1; }
-.student-card-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 19px; }
+.student-card-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; }
 .student-card-copy span { color: #48515a; }
 .student-card-actions { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--line); padding-top: 8px; }
 .student-card-actions .wa-link { margin-right: auto; }
@@ -1897,12 +1854,16 @@ td {
   .student-card-leading-actions { margin-inline-start: -10px; }
   .student-card-leading-actions .icon-action { width: 40px; height: 44px; }
   .student-avatar { width: 44px; height: 44px; flex-basis: 44px; }
-  .student-card-copy strong { font-size: 17px; }
+  .student-card-copy strong { font-size: 15px; }
 }
 
 /* ---------- mobile primary navigation ---------- */
 
 .mobile-bottom-nav { display: none; }
+
+/* The bottom bar belongs to the signed-in shell only. */
+body:has(.app-shell[hidden]) .mobile-bottom-nav,
+body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !important; }
 .reminder-list { display: grid; gap: 10px; }
 .reminder-card { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
 .reminder-card > div:nth-child(2) { display: grid; gap: 2px; flex: 1; }
@@ -1927,11 +1888,6 @@ td {
   .report-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .report-metrics { grid-template-columns: 1fr 1fr; }
   .topbar { display: none; }
-  .mobile-bar { min-height: 68px; }
-  .mobile-brand { justify-content: flex-start; display: grid; grid-template-columns: 36px minmax(0, 1fr); column-gap: 10px; row-gap: 0; }
-  .mobile-brand .brand-logo, .mobile-brand .brand-mark { grid-row: span 2; }
-  .mobile-brand strong { align-self: end; font-size: 18px; }
-  #mobilePageTitle { align-self: start; color: #c7d8eb; font-size: 14px; }
 }
 
 @media (max-width: 620px) {
@@ -2046,15 +2002,13 @@ td {
   font-size: 13px;
 }
 
-.student-card.clickable { cursor: pointer; }
-.student-card.clickable:hover { border-color: var(--accent); background: var(--accent-softer); }
 .student-card-side { display: grid; justify-items: end; gap: 6px; margin-left: auto; }
 .student-card-tools { display: flex; gap: 4px; }
 .student-card-tools .icon-action { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .student-card-tools .icon-action svg { width: 18px; height: 18px; }
+.student-card-tools .edit-action { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-softer); }
 .student-card-tools .delete-action { color: var(--danger); }
 .student-card-copy strong { white-space: normal; overflow-wrap: anywhere; }
-.student-card-copy strong.long-name { font-size: 15px; line-height: 1.25; }
 .admitted-line { font-size: 12px; color: var(--muted); }
 
 .contact-link {
@@ -2246,4 +2200,282 @@ td {
     transition: none !important;
     animation: none !important;
   }
+}
+
+/* ---------- header compaction ---------- */
+
+.topbar { margin-bottom: 16px; }
+.topbar h2 { font-size: 26px; }
+
+/* ---------- scan admission form ---------- */
+
+.scan-status {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  background: var(--page);
+  color: var(--ink);
+}
+
+.scan-status.working {
+  border-color: var(--accent-soft);
+  background: var(--accent-softer);
+  color: var(--accent-strong);
+}
+
+.scan-status.working::before {
+  content: "";
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: boot-spin 0.8s linear infinite;
+}
+
+.scan-status.ok {
+  border-color: #c9e9d0;
+  background: #e5f5e9;
+  color: #21703a;
+}
+
+.scan-status.ok::before { content: "✓"; font-weight: 800; }
+
+.scan-status.fail {
+  border-color: #f7d4d0;
+  background: #fdeeed;
+  color: var(--danger);
+}
+
+.scan-status.fail::before { content: "!"; font-weight: 800; }
+
+/* ---------- student form: courses & packages picker ---------- */
+
+.course-pick-section {
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  background: var(--accent-softer);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.course-pick-title {
+  margin: 0;
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.course-pick-hint {
+  color: var(--danger);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.course-pick-groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.course-pick-group {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
+.course-pick-group h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.course-pick-group .course-pick-box {
+  max-height: 180px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+@media (max-width: 620px) {
+  .course-pick-groups { grid-template-columns: 1fr; }
+  .course-pick-group .course-pick-box { max-height: 150px; }
+}
+
+/* ---------- courses: top three + scrollable rest ---------- */
+
+.course-top-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.course-top-grid .top-course {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, var(--accent-softer), var(--surface));
+  box-shadow: var(--shadow);
+}
+
+.course-scroll {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(230px, 300px);
+  gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding-bottom: 8px;
+}
+
+@media (max-width: 620px) {
+  .course-top-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------- reminder cards ---------- */
+
+.reminder-card {
+  border-inline-start: 4px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.reminder-card.reminder-due { border-inline-start-color: #e08a3c; }
+.reminder-card.reminder-birthday { border-inline-start-color: #2f9e63; }
+
+.reminder-card strong { font-size: 15px; }
+
+/* ---------- trash (admin only) ---------- */
+
+.trash-list { display: grid; gap: 10px; }
+
+.trash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.trash-row > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.trash-row strong { font-size: 15px; }
+.trash-row span { color: var(--muted); font-size: 12.5px; }
+.trash-row .inline-tools { display: flex; gap: 6px; flex: 0 0 auto; }
+.trash-tools { margin-bottom: 10px; }
+
+.small-btn.danger {
+  color: var(--danger);
+  background: #fdeeed;
+  border: 1px solid #f7d4d0;
+}
+
+/* ---------- more: backup panel ---------- */
+
+.backup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.backup-actions > * {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 10px 14px;
+  border-radius: 10px;
+}
+
+@media (max-width: 620px) {
+  .backup-actions > * { flex-basis: 100%; }
+}
+
+/* ---------- reports polish ---------- */
+
+.report-overview > div {
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.report-overview .stat-income { background: rgba(46, 158, 99, 0.24); border-color: rgba(120, 210, 160, 0.35); }
+.report-overview .stat-expense { background: rgba(224, 138, 60, 0.22); border-color: rgba(235, 180, 130, 0.35); }
+.report-overview .stat-net { background: rgba(255, 255, 255, 0.14); }
+.report-overview .stat-bank { background: rgba(74, 127, 214, 0.22); border-color: rgba(150, 185, 235, 0.35); }
+
+.report-metrics article {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.report-metrics article:first-child strong { color: #21703a; }
+.report-metrics article:nth-child(2) strong { color: #b45309; }
+
+@media (max-width: 620px) {
+  .period-picker { justify-items: stretch; width: 100%; }
+  .period-chips { display: flex; flex-wrap: wrap; width: 100%; }
+  .period-chips button { flex: 1 1 auto; }
+  .report-hero input[type="date"],
+  .report-hero input[type="month"],
+  .report-hero input[type="number"] { max-width: none; width: 100%; }
+}
+
+/* ---------- students per course bars ---------- */
+
+.bar-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 38%) 1fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.bar-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-track {
+  height: 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-strong), var(--accent));
+}
+
+.bar-value {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  min-width: 44px;
+  text-align: right;
 }

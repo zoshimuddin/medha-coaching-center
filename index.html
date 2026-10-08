@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Medha Coaching Center Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=5" />
+    <link rel="stylesheet" href="./styles.css?v=6" />
   </head>
   <body>
     <div id="loginView" class="login-wrap" hidden>
@@ -34,10 +34,9 @@
 
     <div id="appShell" class="app-shell" hidden>
       <header class="mobile-bar">
-        <div class="mobile-brand">
-          <strong id="brandNameMobile">Medha</strong>
-          <span id="mobilePageTitle">Home</span>
-        </div>
+        <span class="bar-side" aria-hidden="true"></span>
+        <strong id="brandNameMobile" class="mobile-brand-name">Medha</strong>
+        <span id="mobilePageTitle" class="mobile-bar-title">Home</span>
       </header>
       <aside id="sidebar" class="sidebar" aria-label="Main navigation">
         <div class="brand brand-desktop">
@@ -150,22 +149,24 @@
           <section id="reports" class="view">
             <section class="report-hero panel">
               <div class="panel-header">
-                <div><h3>Reports</h3><p id="reportSummaryText">Pick a period to see income, expense, fees, and dues.</p></div>
+                <h3>Reports</h3>
                 <div class="period-picker">
                   <div class="period-chips" role="group" aria-label="Report period">
                     <button type="button" data-report-period="day">Day</button>
                     <button type="button" data-report-period="week">Week</button>
                     <button type="button" data-report-period="month" class="active">Month</button>
+                    <button type="button" data-report-period="year">Year</button>
                   </div>
                   <input id="reportPeriodDate" type="date" hidden />
                   <input id="reportPeriodMonth" type="month" />
+                  <input id="reportPeriodYear" type="number" min="2024" max="2040" hidden aria-label="Report year" />
                 </div>
               </div>
               <div class="report-overview">
-                <div><span data-i18n="income">Income</span><strong id="reportIncome">৳0</strong></div>
-                <div><span data-i18n="expense">Expense</span><strong id="reportExpense">৳0</strong></div>
-                <div><span>Net</span><strong id="reportNet">৳0</strong></div>
-                <div><span data-i18n="bankBalance">In bank</span><strong id="reportBankBalance">৳0</strong></div>
+                <div class="stat-income"><span data-i18n="income">Income</span><strong id="reportIncome">৳0</strong></div>
+                <div class="stat-expense"><span data-i18n="expense">Expense</span><strong id="reportExpense">৳0</strong></div>
+                <div class="stat-net"><span>Net</span><strong id="reportNet">৳0</strong></div>
+                <div class="stat-bank"><span data-i18n="bankBalance">In bank</span><strong id="reportBankBalance">৳0</strong></div>
               </div>
             </section>
             <div class="report-charts">
@@ -178,7 +179,6 @@
               <article class="panel"><span>Fee due</span><strong id="reportDue">৳0</strong></article>
               <article class="panel"><span>Discounts waived</span><strong id="reportDiscount">৳0</strong></article>
             </div>
-            <section class="panel panel-gap"><div class="panel-header"><h3>Students with due</h3></div><div id="reportStudentDues" class="compact-list"></div></section>
             <section class="panel panel-gap"><div class="panel-header"><h3>Coaching dues</h3></div><div id="reportDues" class="compact-list"></div></section>
             <section class="panel panel-gap"><div class="panel-header"><h3>Bank activity</h3></div><div id="reportBank" class="compact-list"></div></section>
           </section>
@@ -205,9 +205,10 @@
               <div class="panel-header"><h3>More sections</h3></div>
               <div id="moreLinks" class="more-links"></div>
             </section>
-            <section class="panel panel-gap" id="adminTools">
-              <button id="adminToolsToggle" class="admin-toggle" type="button" aria-expanded="false"><span>Admin tools</span><span class="admin-chevron">▾</span></button>
-              <div id="adminToolsBody" class="admin-tools-body" hidden>
+            <section class="panel panel-gap" id="adminTools" hidden>
+              <div class="panel-header"><h3>Backup & data</h3></div>
+              <p class="muted-note">Download a full JSON backup, upload it back, or clear the app data — admin only.</p>
+              <div class="backup-actions">
                 <button id="exportDataBtn" class="secondary-btn" type="button" data-i18n="backupDown">Download backup</button>
                 <label class="secondary-btn file-btn" for="importFileInput" data-i18n="backupUp">Upload backup</label>
                 <input id="importFileInput" type="file" accept="application/json" hidden />
@@ -272,7 +273,11 @@
                   <label><span>Group *</span><select id="studentGroup" required></select></label>
                 </div>
                 <label><span>Batch</span><select id="studentBatch"></select></label>
-                <details class="course-drop"><summary>Courses / packages *</summary><div id="studentCoursesBox" class="course-pick-box"></div></details>
+                <section id="coursePickSection" class="course-pick-section">
+                  <p class="course-pick-title">Courses & packages <span class="course-pick-hint">pick at least one *</span></p>
+                  <div id="studentCoursesBox" class="course-pick-box"></div>
+                </section>
+                <p id="scanStatus" class="scan-status" role="status" hidden></p>
                 <div class="admission-box"><p class="admission-note">Admission fee: <strong id="admissionFeeNote">৳0</strong></p><label><span>Admission fee paid *</span><input id="admissionPaid" type="number" min="0" step="1" required /></label></div>
                 <div class="form-actions"><button id="studentSubmitBtn" class="primary-btn" type="submit">Add student</button><button id="studentCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button></div>
               </form>
@@ -631,6 +636,14 @@
               </form>
             </section>
 
+            <section class="panel panel-gap" id="trashSection" hidden>
+              <div class="panel-header"><h3>Deleted students <span class="badge due">kept 30 days</span></h3></div>
+              <div class="trash-tools">
+                <button id="purgeTrashBtn" class="small-btn" type="button">Delete entries older than 30 days</button>
+              </div>
+              <div id="trashRows" class="trash-list" aria-live="polite"></div>
+            </section>
+
             <section class="panel panel-gap" id="usersSection">
               <div class="panel-header"><h3 data-i18n="usersTitle">ইউজার ম্যানেজমেন্ট (শুধু অ্যাডমিন)</h3></div>
               <form id="userForm" class="panel form-panel user-form-inner">
@@ -746,10 +759,13 @@
       <button type="button" data-view="fees"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span>Fees</span></button>
       <button type="button" data-view="more"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg><span>More</span></button>
     </nav>
-    <div id="bootOverlay" class="boot-overlay" hidden><span data-i18n="loading">Loading…</span></div>
+    <div id="bootOverlay" class="boot-overlay" hidden>
+      <div class="boot-spinner" aria-hidden="true"></div>
+      <span data-i18n="loading">Loading…</span>
+    </div>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="./app.js?v=6"></script>
+    <script src="./app.js?v=7"></script>
   </body>
 </html>
