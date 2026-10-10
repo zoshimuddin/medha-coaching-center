@@ -79,6 +79,41 @@ Deno.serve(async (req) => {
     return json({ id: created.user.id });
   }
 
+  if (body.action === "attach") {
+    // Self-heal: an Auth user exists (e.g. from an earlier half-created
+    // browser-signUp attempt) but has no profile. Attach the profile and
+    // confirm the email so the account is immediately usable.
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const profile = (body.profile ?? {}) as Record<string, unknown>;
+    if (!email) return json({ error: "email required" }, 400);
+
+    let existing: { id: string } | undefined;
+    for (let page = 1; page <= 10 && !existing; page++) {
+      const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 200 });
+      if (error) return json({ error: error.message }, 400);
+      const users = ((data as { users?: Array<{ id: string; email?: string }> } | null)?.users ?? []) as Array<{ id: string; email?: string }>;
+      existing = users.find((u) => (u.email ?? "").toLowerCase() === email);
+      if (!users.length) break;
+    }
+    if (!existing) return json({ error: `no Auth user found for ${email}` }, 404);
+
+    const { error: profileErr } = await admin.from("profiles").upsert({
+      id: existing.id,
+      username: String(profile.username ?? email),
+      role: String(profile.role ?? "viewer"),
+      tabs: profile.tabs ?? ["dashboard"],
+      money_edit: !!profile.money_edit,
+      teacher_courses: profile.teacher_courses ?? [],
+      student_field_grants: profile.student_field_grants ?? [],
+      teacher_payroll_access: !!profile.teacher_payroll_access,
+      student_id: (profile.student_id as string) || null,
+    });
+    if (profileErr) return json({ error: profileErr.message }, 400);
+    const { error: confirmErr } = await admin.auth.admin.updateUserById(existing.id, { email_confirm: true });
+    if (confirmErr) return json({ error: confirmErr.message }, 400);
+    return json({ id: existing.id, attached: true });
+  }
+
   if (body.action === "delete") {
     const id = String(body.id ?? "");
     if (!id || id === user.id) return json({ error: "invalid target user" }, 400);

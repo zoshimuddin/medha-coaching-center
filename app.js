@@ -2628,6 +2628,23 @@ async function createUserViaEdge(email, password, profile) {
   }
   if (error) {
     const real = await edgeErrorMessage(error);
+    // The Auth account already exists from an earlier half-created attempt:
+    // attach a profile to it (and confirm the email) instead of failing.
+    if (/already|exists|duplicate|been taken/i.test(real)) {
+      try {
+        ({ data, error } = await sb.functions.invoke("admin-users", {
+          body: { action: "attach", email, profile },
+        }));
+      } catch (err) {
+        error = err;
+      }
+      if (error) {
+        const attachReal = await edgeErrorMessage(error);
+        if (isEdgeUnavailable(error, attachReal)) return { skipped: true };
+        throw new Error(attachReal || error.message);
+      }
+      return { id: data?.id, attached: true };
+    }
     if (isEdgeUnavailable(error, real)) return { skipped: true };
     throw new Error(real || error.message);
   }
@@ -2644,7 +2661,7 @@ async function createUserFallback(email, password, profile) {
   // Supabase returns an obfuscated user with no identities when the email is
   // already registered, so a missing id alone is not enough to detect this.
   if (!newId || (Array.isArray(identities) && identities.length === 0)) {
-    throw new Error("This email already has an account. Use a different email.");
+    throw new Error("This email already has an account. Deploy the admin-users Edge Function (DEPLOY.md), then create the user again with the same details — the app will attach a profile to the existing account and confirm it.");
   }
   // With email confirmation off, signUp returns a session and swaps the client
   // to the new user. Restore the admin's session first, otherwise the profile
@@ -2729,7 +2746,7 @@ els.userForm.addEventListener("submit", async (event) => {
       const { data: createdProfile, error: verifyErr } = await sb.from("profiles").select("id, username").eq("username", username).maybeSingle();
       if (verifyErr) throw verifyErr;
       if (!createdProfile) {
-        throw new Error(`Account created in Auth, but the profile row for "${username}" is missing, so it cannot appear in the list or log in. Fix: Supabase > Authentication > Users — delete the half-created "${email}" entry, deploy the admin-users Edge Function (DEPLOY.md), then create the user again.`);
+        throw new Error(`Account created in Auth, but the profile row for "${username}" is missing. Deploy the admin-users Edge Function (DEPLOY.md), then create the user again with the same details — the app attaches the profile to the existing account and confirms it.`);
       }
       if (result.needsConfirm) {
         // Browser signUp cannot confirm emails; block login until confirmed.
