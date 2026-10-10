@@ -275,7 +275,7 @@ const state = {
   students: [], invoices: [], money: [], dues: [],
   bank: { opening: 0 }, bankTx: [],
   teacherPayments: [], heldSessions: [],
-  users: [], activity: [], feePayments: [], feeDiscounts: [],
+  users: [], activity: [], feePayments: [], feeDiscounts: [], usersLoadError: "",
   ideas: [], offeringCounts: {}, trash: [],
 };
 let editingStudentId = null;
@@ -513,18 +513,27 @@ const db = {
   },
 
   async loadAdmin() {
-    if (!isManager()) { state.users = []; state.activity = []; return; }
-    const [users, activity] = await Promise.all([
-      isAdmin() ? safe(sb.from("profiles").select("*").order("created_at", { ascending: true })) : Promise.resolve([]),
+    if (!isManager()) { state.users = []; state.activity = []; state.usersLoadError = ""; return; }
+    const [usersResult, activity] = await Promise.all([
+      isAdmin()
+        ? sb.from("profiles").select("*").order("created_at", { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
       safe(sb.from("activity_log").select("*").order("created_at", { ascending: false }).limit(500)),
     ]);
-    state.users = (users || []).map((r) => ({
-      id: r.id, username: r.username, role: r.role,
-      tabs: Array.isArray(r.tabs) ? r.tabs : [], moneyEdit: !!r.money_edit,
-      fieldGrants: Array.isArray(r.student_field_grants) ? r.student_field_grants : [],
-      payrollAccess: !!r.teacher_payroll_access, studentId: r.student_id || "",
-      createdAt: Date.parse(r.created_at),
-    }));
+    if (usersResult.error) {
+      // Keep the previous list on screen instead of silently blanking it.
+      state.usersLoadError = usersResult.error.message;
+      console.debug("profiles load:", usersResult.error.message);
+    } else {
+      state.usersLoadError = "";
+      state.users = (usersResult.data || []).map((r) => ({
+        id: r.id, username: r.username, role: r.role,
+        tabs: Array.isArray(r.tabs) ? r.tabs : [], moneyEdit: !!r.money_edit,
+        fieldGrants: Array.isArray(r.student_field_grants) ? r.student_field_grants : [],
+        payrollAccess: !!r.teacher_payroll_access, studentId: r.student_id || "",
+        createdAt: Date.parse(r.created_at),
+      }));
+    }
     state.activity = (activity || []).map((r) => ({
       id: r.id, user: r.username, action: r.action, detail: r.detail || "", date: r.date,
       time: new Date(r.created_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }),
@@ -2714,7 +2723,20 @@ els.userForm.addEventListener("submit", async (event) => {
           throw new Error(`${fallbackErr.message} (Deploy the admin-users function for reliable user creation — see DEPLOY.md.)`);
         }
       }
-      toast(result.needsConfirm ? t("msgEmailConfirm") : `"${username}" ${t("tUserAdd")}`);
+      // Verify the profile row really exists before claiming success; without
+      // it the user never appears in the list and permissions do not resolve.
+      const { data: createdProfile, error: verifyErr } = await sb.from("profiles").select("id, username").eq("id", result.id).maybeSingle();
+      if (verifyErr) throw verifyErr;
+      if (!createdProfile) {
+        throw new Error("Account created in Auth, but the profile row is missing — the user list and login will not work. Deploy the admin-users Edge Function (see DEPLOY.md) and create this user again.");
+      }
+      if (result.needsConfirm) {
+        // Browser signUp cannot confirm emails; block login until confirmed.
+        showUserFormError(`"${username}" was created, but email confirmation is ON in Supabase, so login fails with "Email not confirmed" until confirmed. Fix: Supabase > Authentication > Sign In / Providers > turn Confirm email OFF, or confirm the user under Authentication > Users. Deploying the admin-users function auto-confirms new users.`);
+        toast("User created, but email must be confirmed before login.");
+      } else {
+        toast(`"${username}" ${t("tUserAdd")}`);
+      }
       logActivity("Create user", `${username} — ${roleLabel(role)}`);
     }
   } catch (err) {
@@ -2763,8 +2785,12 @@ function renderUsers() {
     ...state.students.map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`),
   ].join("");
 
+  const loadErrorRow = state.usersLoadError
+    ? `<tr><td colspan="4"><p class="form-error-note">User list could not load: ${escapeHtml(state.usersLoadError)} — check that you are logged in as the super admin.</p></td></tr>`
+    : "";
+
   els.userRows.innerHTML = state.users.length
-    ? state.users.map((u) => {
+    ? loadErrorRow + state.users.map((u) => {
         const tabs = u.role === "admin" ? t("tabsAll") : (u.tabs || []).map(tabLabel).join(", ") || t("tabsNone");
         const self = currentUser && u.id === currentUser.id;
         const granted = (u.fieldGrants || []).length ? ` + ${(u.fieldGrants).join(", ")}` : "";
