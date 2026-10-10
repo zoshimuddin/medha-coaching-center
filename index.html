@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Medha Coaching Center Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=8" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
   </head>
   <body>
     <div id="loginView" class="login-wrap" hidden>
@@ -153,6 +153,7 @@
 
             <section class="panel panel-gap">
               <div class="panel-header"><h3>Enrollment by subject &amp; package</h3></div>
+              <div id="homeYearTabs" class="year-chips" role="group" aria-label="Filter enrollment by year"></div>
               <div id="homeSubjectCards" class="subject-card-grid"></div>
             </section>
           </section>
@@ -315,7 +316,7 @@
                   <div id="studentCoursesBox" class="course-pick-box"></div>
                 </section>
                 <p id="scanStatus" class="scan-status" role="status" hidden></p>
-                <div class="admission-box"><p class="admission-note">Admission fee (fixed in Settings): <strong id="admissionFeeNote">৳0</strong></p><label><span>Admission fee (auto)</span><input id="admissionPaid" type="number" min="0" step="1" readonly /></label></div>
+                <div class="admission-box"><p class="admission-note">Admission fee (fixed in Settings): <strong id="admissionFeeNote">৳0</strong> — collected together with the first month's fee</p><label><span>Admission fee (auto, pending)</span><input id="admissionPaid" type="number" min="0" step="1" readonly /></label></div>
                 <div class="form-actions"><button id="studentSubmitBtn" class="primary-btn" type="submit">Add student</button><button id="studentCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button></div>
               </form>
             </div>
@@ -364,6 +365,7 @@
                     <option value="package" data-i18n="onlyPackage">শুধু প্যাকেজ</option>
                   </select>
                 </div>
+                <div id="courseYearTabs" class="year-chips" role="group" aria-label="Filter course enrollment by year"></div>
                 <div id="courseCards" class="batch-grid"></div>
               </section>
             </div>
@@ -801,6 +803,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="./app.js?v=13"></script>
+    <script src="./app.js?v=14"></script>
   </body>
 </html>

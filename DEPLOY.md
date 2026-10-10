@@ -25,10 +25,15 @@ same live database e thake. localStorage ar nei.
    attendance rosters and counts. After running it, open each package in
    **Courses** and confirm its included subjects, then save once so custom
    packages are mapped too.
-8. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+8. Run `supabase/20261012_admission_first_month.sql` — the admission fee
+   becomes pending at admission and is collected together with the first
+   month's fee (auto income entry, confirmation in the collect dialog).
+   Existing recorded admissions reset to pending, and the unused duplicate
+   subject "HSC Physics" is removed (Physics stays).
+9. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
    off if users should be created without email confirmation.
-9. Create the owner account in **Authentication > Users > Add user** and copy
-   its UID. Run this once in the SQL Editor:
+10. Create the owner account in **Authentication > Users > Add user** and copy
+    its UID. Run this once in the SQL Editor:
 
 ```sql
 insert into profiles (id, username, role, tabs, money_edit)
@@ -37,7 +42,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-10. Onno user ra ekhon **Settings > User management** thekei banano jabe
+11. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function

@@ -2670,6 +2670,14 @@ input[readonly] { background: #eef2f7; color: var(--muted); }
 
 /* ---------- students per course bars ---------- */
 
+.fee-course-admission {
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+  margin-top: 4px;
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
 .bar-row {
   display: grid;
   grid-template-columns: minmax(90px, 38%) 1fr auto;

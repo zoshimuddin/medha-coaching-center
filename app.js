@@ -275,7 +275,7 @@ const state = {
   students: [], invoices: [], money: [], dues: [],
   bank: { opening: 0 }, bankTx: [],
   teacherPayments: [], heldSessions: [],
-  users: [], activity: [], feePayments: [], feeDiscounts: [], usersLoadError: "",
+  users: [], activity: [], feePayments: [], feeDiscounts: [], usersLoadError: "", admissions: [],
   ideas: [], offeringCounts: {}, trash: [],
 };
 let editingStudentId = null;
@@ -296,6 +296,7 @@ let ideaFilter = "All";
 let reportPeriod = "month";
 let coursePickerTab = "subject";
 let pendingSubjectFilter = null;
+let enrollmentYearFilter = "all";
 
 const els = {};
 for (const el of document.querySelectorAll("[id]")) els[el.id] = el;
@@ -388,8 +389,32 @@ function studentInCourse(student, courseId) {
     && enrolled.some((e) => e.courseId === pkg.id));
 }
 
-function courseEnrollmentCount(courseId) {
-  return state.students.filter((s) => s.status === "active" && studentInCourse(s, courseId)).length;
+function courseEnrollmentCount(courseId, year = enrollmentYearFilter) {
+  return state.students.filter((s) =>
+    s.status === "active"
+    && (year === "all" || s.year === year)
+    && studentInCourse(s, courseId)
+  ).length;
+}
+
+// Year chips (All / 1st year / 2nd year) shared by the Home enrollment cards
+// and the Courses & Package section so both always show the same numbers.
+function renderEnrollmentYearTabs(container) {
+  if (!container) return;
+  const options = [["all", "All years"], ["1st year", "1st year"], ["2nd year", "2nd year"]];
+  container.innerHTML = options.map(([value, label]) =>
+    `<button type="button" class="year-chip${enrollmentYearFilter === value ? " active" : ""}" data-enroll-year="${value}" aria-pressed="${enrollmentYearFilter === value}">${label}</button>`
+  ).join("");
+  container.querySelectorAll("[data-enroll-year]").forEach((button) =>
+    button.addEventListener("click", () => {
+      if (enrollmentYearFilter === button.dataset.enrollYear) return;
+      enrollmentYearFilter = button.dataset.enrollYear;
+      renderEnrollmentYearTabs(els.homeYearTabs);
+      renderEnrollmentYearTabs(els.courseYearTabs);
+      renderDashboard();
+      renderCourses();
+      renderCharts();
+    }));
 }
 
 function formatClassTime(value) {
@@ -471,7 +496,7 @@ const db = {
   async loadFinance() {
     const canFees = canView("fees");
     const canMoney = canView("money");
-    const [invoiceRows, paymentRows, discountRows, moneyRows, dueRows, bankRow, bankTxRows] = await Promise.all([
+    const [invoiceRows, paymentRows, discountRows, moneyRows, dueRows, bankRow, bankTxRows, admissionRows] = await Promise.all([
       canFees ? safe(sb.from("student_fee_invoices").select("*")) : [],
       canFees ? safe(sb.from("student_fee_payments").select("invoice_id,amount,payment_date,paid_at,received_by")) : [],
       canFees ? safe(sb.from("student_fee_discounts").select("invoice_id,amount,billing_month,applied_at,applied_by")) : [],
@@ -479,7 +504,11 @@ const db = {
       canMoney ? safe(sb.from("dues").select("*").order("created_at", { ascending: false })) : [],
       canMoney ? safe(sb.from("bank_account").select("*").eq("id", true).maybeSingle()) : null,
       canMoney ? safe(sb.from("bank_transactions").select("*").order("transaction_date", { ascending: false }).limit(200)) : [],
+      canFees ? safe(sb.from("admission_payments").select("student_id, required_amount, amount_paid")) : [],
     ]);
+    state.admissions = (Array.isArray(admissionRows) ? admissionRows : []).map((r) => ({
+      studentId: r.student_id, required: Number(r.required_amount || 0), paid: Number(r.amount_paid || 0),
+    }));
     state.feePayments = paymentRows || [];
     state.feeDiscounts = discountRows || [];
     const paymentsByInvoice = new Map();
@@ -1195,7 +1224,9 @@ els.studentForm.addEventListener("submit", async (event) => {
   if (!enrollments.length) { missing.push("Course/Package"); flashInvalid(els.coursePickSection); }
   if (feeInvalid) { toast(t("msgFeeNeg")); return; }
   if (missing.length) { toast(`Fill required fields: ${missing.join(", ")}`); return; }
-  const admissionPaid = state.settings.admissionFee;
+  // Admission is not collected here anymore — it rides with the first month's
+  // fee collection and is recorded by collect_student_admission.
+  const admissionPaid = 0;
 
   const pStudent = {
     id: editingStudentId || "",
@@ -1538,6 +1569,7 @@ function courseCard(course, count, extraClass) {
 }
 
 function renderCourses() {
+  renderEnrollmentYearTabs(els.courseYearTabs);
   const filter = els.courseFilter.value;
   const candidates = state.courses
     .filter((c) => filter === "all" || c.type === filter)
@@ -2016,6 +2048,13 @@ async function openFeeDetail(studentId, push = true) {
   const editing = editingReceiptId ? history.find((item) => item.receiptId === editingReceiptId && item.kind !== "legacy") : null;
   const editBase = due + (editing ? Number(editing.paid || 0) + Number(editing.discount || 0) : 0);
   const courses = invoices.map((invoice) => `<div class="fee-course-row"><span>${escapeHtml(getCourseName(invoice.courseId))}</span><span>${formatMoney(invoice.agreedFee)}</span></div>`).join("");
+  // Admission fee pending for this student shows once, with the first month.
+  const admission = state.admissions.find((a) => a.studentId === studentId);
+  const pendingAdmission = admission ? Math.max(0, admission.required - admission.paid) : 0;
+  const admissionRow = pendingAdmission > 0
+    ? `<div class="fee-course-row fee-course-admission"><span>Admission fee (first month)</span><span>${formatMoney(pendingAdmission)}</span></div>`
+    : "";
+  const totalDue = due + pendingAdmission;
   const historyHtml = history.length ? history.map((item) => {
     const title = item.kind === "legacy" ? "Legacy payment" : Number(item.paid) > 0 ? `Paid ${formatMoney(item.paid)}` : "Discount";
     const disc = Number(item.discount) > 0 ? ` · Disc ${formatMoney(item.discount)}` : "";
@@ -2027,15 +2066,15 @@ async function openFeeDetail(studentId, push = true) {
       </div>` : "";
     return `<article class="fee-history-item"><div><strong>${title}${disc}</strong><span>Remaining ${remaining} · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div>${tools}<button type="button" class="small-btn" data-print-history="${escapeHtml(item.receiptId)}">Print</button></article>`;
   }).join("") : emptyState("No payment history for this month.");
-  const showForm = canEditTab("fees") && (due > 0 || editing);
-  const formAmount = editing ? Number(editing.paid || 0) : due;
+  const showForm = canEditTab("fees") && (due > 0 || pendingAdmission > 0 || editing);
+  const formAmount = editing ? Number(editing.paid || 0) : totalDue;
   const formDate = editing ? (editing.paymentDate || today) : today;
   const formDiscount = editing ? Number(editing.discount || 0) > 0 : false;
   els.feeDetailTitle.textContent = `${student.name} · ${month}`;
   els.feeDetailBody.innerHTML = `
-    <div class="fee-detail-student"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))} · ${escapeHtml(yearLabel(student.year))}</span><span class="badge ${due > 0 ? "due" : "paid"}">${due > 0 ? `Due ${formatMoney(due)}` : "Fully paid"}</span></div></div>
-    <section class="fee-detail-section"><h3>Monthly fees</h3>${courses || emptyState("No invoices for this month.")}<div class="fee-course-total"><strong>Remaining due</strong><strong>${formatMoney(due)}</strong></div></section>
-    ${showForm ? `<form id="feeCollectionForm" class="fee-collection-form"><h3>${editing ? "Edit receipt" : "Collect payment"}</h3>${editing ? `<p class="muted-note">Saving replaces this receipt with the new amount and date.</p>` : ""}<div class="fee-amount-row"><label><span>Amount (৳)</span><input id="feePaymentAmount" type="number" min="0" max="${editBase}" step="0.01" value="${formAmount}" required /></label><label class="discount-option"><input id="feeDiscountToggle" type="checkbox" ${formDiscount ? "checked" : ""} /><span>Discount</span></label></div><p id="feeDiscountPreview" class="discount-preview" hidden></p><label><span>Payment date</span><input id="feePaymentDate" type="date" value="${formDate}" required /></label><div class="form-actions"><button id="collectFeeBtn" class="primary-btn" type="submit">${editing ? "Update receipt" : "Collect"}</button>${editing ? `<button type="button" id="cancelEditReceiptBtn" class="secondary-btn">Cancel edit</button>` : ""}</div></form>` : ""}
+    <div class="fee-detail-student"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))} · ${escapeHtml(yearLabel(student.year))}</span><span class="badge ${totalDue > 0 ? "due" : "paid"}">${totalDue > 0 ? (due > 0 ? `Due ${formatMoney(due)}` : `Admission due`) : "Fully paid"}</span></div></div>
+    <section class="fee-detail-section"><h3>Monthly fees</h3>${courses || emptyState("No invoices for this month.")}${admissionRow}<div class="fee-course-total"><strong>Total due${pendingAdmission > 0 ? " (incl. admission)" : ""}</strong><strong>${formatMoney(totalDue)}</strong></div></section>
+    ${showForm ? `<form id="feeCollectionForm" class="fee-collection-form"><h3>${editing ? "Edit receipt" : "Collect payment"}</h3>${editing ? `<p class="muted-note">Saving replaces this receipt with the new amount and date.</p>` : (pendingAdmission > 0 ? `<p class="muted-note">Includes the one-time admission fee — later months never include it.</p>` : "")}<div class="fee-amount-row"><label><span>Amount (৳)</span><input id="feePaymentAmount" type="number" min="0" max="${editBase + pendingAdmission}" step="0.01" value="${formAmount}" required /></label><label class="discount-option"><input id="feeDiscountToggle" type="checkbox" ${formDiscount ? "checked" : ""} /><span>Discount</span></label></div><p id="feeDiscountPreview" class="discount-preview" hidden></p><label><span>Payment date</span><input id="feePaymentDate" type="date" value="${formDate}" required /></label><div class="form-actions"><button id="collectFeeBtn" class="primary-btn" type="submit">${editing ? "Update receipt" : "Collect"}</button>${editing ? `<button type="button" id="cancelEditReceiptBtn" class="secondary-btn">Cancel edit</button>` : ""}</div></form>` : ""}
     <section class="fee-detail-section"><h3>Collection history</h3><div class="fee-history-list">${historyHtml}</div></section>`;
   els.feeDetailPage.hidden = false;
   if (shouldPush) pushDetailState({ ccm: "fee-detail", studentId, view: currentRoute });
@@ -2051,7 +2090,7 @@ async function openFeeDetail(studentId, push = true) {
   });
   document.getElementById("feeCollectionForm")?.addEventListener("submit", (event) => {
     event.preventDefault();
-    submitMonthFee(student, month, due, editBase);
+    submitMonthFee(student, month, due, editBase, pendingAdmission);
   });
   const updateDiscountPreview = () => {
     const amount = Number(document.getElementById("feePaymentAmount").value);
@@ -2066,56 +2105,73 @@ async function openFeeDetail(studentId, push = true) {
   updateDiscountPreview();
 }
 
-async function submitMonthFee(student, month, editBase) {
+async function submitMonthFee(student, month, due, editBase, pendingAdmission = 0) {
   if (!requireEdit("fees")) return;
+  const maxTotal = editBase + pendingAdmission;
   const amount = Number(document.getElementById("feePaymentAmount").value);
-  if (!Number.isFinite(amount) || amount < 0 || amount > editBase) { toast(`Enter an amount between 0 and ${formatMoney(editBase)}.`); return; }
+  if (!Number.isFinite(amount) || amount < 0 || amount > maxTotal) { toast(`Enter an amount between 0 and ${formatMoney(maxTotal)}.`); return; }
   const applyDiscount = document.getElementById("feeDiscountToggle").checked;
+  const paymentDate = document.getElementById("feePaymentDate").value;
+  // The admission fee is taken first from the entered amount; what remains
+  // goes to the month's course fees.
+  const admissionPart = pendingAdmission > 0 ? Math.min(pendingAdmission, amount) : 0;
+  const monthPart = applyDiscount ? amount : amount - admissionPart;
+  if (monthPart > editBase) { toast(`Month fee cannot exceed ${formatMoney(editBase)}.`); return; }
   if (amount === 0 && !applyDiscount) { toast("Enter an amount or choose Discount."); return; }
   if (applyDiscount) {
-    pendingDiscount = { student, month, amount, paymentDate: document.getElementById("feePaymentDate").value, waive: editBase - amount, editReceiptId: editingReceiptId };
+    pendingDiscount = { student, month, amount: monthPart, paymentDate, waive: editBase - monthPart, editReceiptId: editingReceiptId, admissionPart: admissionPart };
     els.discountConfirmText.textContent = editingReceiptId
-      ? `Update this receipt to ${formatMoney(amount)} and waive the remaining ${formatMoney(editBase - amount)} for ${month}?`
-      : `Collect ${formatMoney(amount)} and waive the remaining ${formatMoney(editBase - amount)} for ${month}? The next month's fees will not change.`;
+      ? `Update this receipt to ${formatMoney(monthPart)}${admissionPart > 0 ? ` and collect the admission fee ${formatMoney(admissionPart)}` : ""} for ${month}?`
+      : `Collect ${formatMoney(monthPart)}${admissionPart > 0 ? ` + admission ${formatMoney(admissionPart)}` : ""} and waive the remaining ${formatMoney(editBase - monthPart)} for ${month}? The next month's fees will not change.`;
     els.discountConfirmDialog.showModal();
     return;
   }
-  await saveMonthFee(student, month, amount, document.getElementById("feePaymentDate").value, false, editingReceiptId);
+  await saveMonthFee(student, month, monthPart, paymentDate, false, editingReceiptId, admissionPart);
 }
 
 els.confirmDiscountBtn.addEventListener("click", async () => {
   if (!pendingDiscount) return;
-  const { student, month, amount, paymentDate, editReceiptId } = pendingDiscount;
+  const { student, month, amount, paymentDate, editReceiptId, admissionPart } = pendingDiscount;
   pendingDiscount = null;
   els.discountConfirmDialog.close();
-  await saveMonthFee(student, month, amount, paymentDate, true, editReceiptId);
+  await saveMonthFee(student, month, amount, paymentDate, true, editReceiptId, admissionPart || 0);
 });
 els.cancelDiscountBtn.addEventListener("click", () => { pendingDiscount = null; els.discountConfirmDialog.close(); });
 
-async function saveMonthFee(student, month, amount, paymentDate, applyDiscount, editReceiptId) {
+async function saveMonthFee(student, month, amount, paymentDate, applyDiscount, editReceiptId, admissionAmount = 0) {
   const collectButton = document.getElementById("collectFeeBtn");
   if (collectButton) collectButton.disabled = true;
   try {
-    const { data, error } = editReceiptId
-      ? await sb.rpc("edit_student_fee_receipt", { p_receipt: editReceiptId, p_amount: amount, p_payment_date: paymentDate, p_apply_discount: applyDiscount })
-      : await sb.rpc("collect_student_month_fee", {
-          p_student: student.id, p_month: `${month}-01`, p_amount: amount,
-          p_payment_date: paymentDate, p_apply_discount: applyDiscount,
-        });
-    if (error) throw error;
-    editingReceiptId = null;
-    lastReceipt = { student, month, paid: Number(data?.paid || 0), discount: Number(data?.discount || 0), remaining: Number(data?.remaining || 0), paymentDate, recordedAt: data?.recorded_at || new Date().toISOString() };
+    if (amount > 0 || applyDiscount) {
+      const { data, error } = editReceiptId
+        ? await sb.rpc("edit_student_fee_receipt", { p_receipt: editReceiptId, p_amount: amount, p_payment_date: paymentDate, p_apply_discount: applyDiscount })
+        : await sb.rpc("collect_student_month_fee", {
+            p_student: student.id, p_month: `${month}-01`, p_amount: amount,
+            p_payment_date: paymentDate, p_apply_discount: applyDiscount,
+          });
+      if (error) throw error;
+      editingReceiptId = null;
+      lastReceipt = { student, month, paid: Number(data?.paid || 0), discount: Number(data?.discount || 0), remaining: Number(data?.remaining || 0), paymentDate, recordedAt: data?.recorded_at || new Date().toISOString() };
+    }
+    if (admissionAmount > 0) {
+      const { error: admissionError } = await sb.rpc("collect_student_admission", {
+        p_student: student.id, p_amount: admissionAmount, p_payment_date: paymentDate,
+      });
+      if (admissionError) throw admissionError;
+    }
   } catch (err) {
     if (collectButton) collectButton.disabled = false;
     fail(err);
     return;
   }
-  toast(editReceiptId ? "Receipt updated." : "Payment saved.");
-  logActivity(editReceiptId ? "Receipt edit" : "Fee collection", `${student.studentNumber} · ${formatMoney(amount)}${applyDiscount ? " with discount" : ""}`);
+  toast(admissionAmount > 0
+    ? `Payment saved — admission fee ${formatMoney(admissionAmount)} collected.`
+    : (editReceiptId ? "Receipt updated." : "Payment saved."));
+  logActivity(editReceiptId ? "Receipt edit" : "Fee collection", `${student.studentNumber} · ${formatMoney(amount)}${applyDiscount ? " with discount" : ""}${admissionAmount > 0 ? ` + admission ${formatMoney(admissionAmount)}` : ""}`);
   await db.loadFinance();
   renderAll();
   await openFeeDetail(student.id);
-  if (amount > 0 || applyDiscount) openReceipt(lastReceipt);
+  if ((amount > 0 || applyDiscount) && lastReceipt) openReceipt(lastReceipt);
 }
 
 async function deleteReceipt(receiptId, student) {
@@ -2953,11 +3009,15 @@ async function renderDashboard() {
     }
   }
 
-  const totalCollection = canView("fees") ? state.feePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0;
+  // Fee collection + admission fees (auto money entries) = total collection.
+  const admissionIncome = state.money.filter((entry) => entry.type === "income" && (entry.category || "") === "Admission fee");
+  const admissionSum = (match) => admissionIncome.filter((entry) => match(entry.date)).reduce((sum, entry) => sum + entry.amount, 0);
+  const feePaymentsTotal = canView("fees") ? state.feePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0;
+  const totalCollection = feePaymentsTotal + admissionSum(() => true);
   const thisYear = today.slice(0, 4);
-  const dailyCollection = canView("fees") ? state.feePayments.filter((payment) => payment.payment_date === today).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0;
-  const monthlyCollection = canView("fees") ? state.feePayments.filter((payment) => payment.payment_date?.slice(0, 7) === thisMonth).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0;
-  const yearlyCollection = canView("fees") ? state.feePayments.filter((payment) => payment.payment_date?.slice(0, 4) === thisYear).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0;
+  const dailyCollection = (canView("fees") ? state.feePayments.filter((payment) => payment.payment_date === today).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0) + admissionSum((d) => d === today);
+  const monthlyCollection = (canView("fees") ? state.feePayments.filter((payment) => payment.payment_date?.slice(0, 7) === thisMonth).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0) + admissionSum((d) => (d || "").slice(0, 7) === thisMonth);
+  const yearlyCollection = (canView("fees") ? state.feePayments.filter((payment) => payment.payment_date?.slice(0, 4) === thisYear).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0) + admissionSum((d) => (d || "").slice(0, 4) === thisYear);
   const monthlyExpense = state.money.filter((entry) => entry.type === "expense" && entry.date?.slice(0, 7) === thisMonth).reduce((sum, entry) => sum + entry.amount, 0);
   els.homeTotalDue.textContent = formatMoney(allDue);
   els.homeTotalCollection.textContent = formatMoney(totalCollection);
@@ -2992,6 +3052,7 @@ async function renderDashboard() {
     <div class="compact-item"><div><strong>${toNum(absentCount)}</strong><span>${t("attAbsent")}</span></div><span class="badge due">${t("absent")}</span></div>`;
 
   // Per-subject/package enrollment cards; clicking one filters the Students tab.
+  renderEnrollmentYearTabs(els.homeYearTabs);
   const cards = state.courses
     .map((course) => ({ course, count: courseEnrollmentCount(course.id) }))
     .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
