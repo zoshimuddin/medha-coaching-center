@@ -2740,20 +2740,40 @@ els.userForm.addEventListener("submit", async (event) => {
           throw new Error(`${fallbackErr.message} (Deploy the admin-users function for reliable user creation — see DEPLOY.md.)`);
         }
       }
-      // Verify by username (unique) instead of the returned id, so a missing
-      // or malformed id from the edge response can never reach a uuid column.
-      // Without a profile row the user cannot appear in the list or log in.
-      const { data: createdProfile, error: verifyErr } = await sb.from("profiles").select("id, username").eq("username", username).maybeSingle();
+      // Verify by username (unique) so a malformed id can never reach a uuid
+      // column; a missing profile means the account cannot be listed or used.
+      const verifyProfile = () => sb.from("profiles").select("id, username").eq("username", username).maybeSingle();
+      let { data: createdProfile, error: verifyErr } = await verifyProfile();
       if (verifyErr) throw verifyErr;
+      let attached = !!result.attached;
       if (!createdProfile) {
-        throw new Error(`Account created in Auth, but the profile row for "${username}" is missing. Deploy the admin-users Edge Function (DEPLOY.md), then create the user again with the same details — the app attaches the profile to the existing account and confirms it.`);
+        // The Auth account exists without a profile (e.g. an earlier failed
+        // attempt). Ask the edge function to attach + confirm it right now.
+        let attachError = null;
+        try {
+          ({ error: attachError } = await sb.functions.invoke("admin-users", {
+            body: { action: "attach", email, password: pass, profile },
+          }));
+        } catch (err) { attachError = err; }
+        if (!attachError) {
+          ({ data: createdProfile } = await verifyProfile());
+          attached = !!createdProfile;
+        }
+        if (!createdProfile) {
+          const real = attachError ? await edgeErrorMessage(attachError) : "";
+          const { data: anyProfile } = await sb.from("profiles").select("id").limit(1);
+          const visibility = anyProfile && anyProfile.length
+            ? "your session sees other profiles, but this insert is not landing"
+            : "your session cannot see any profile rows (RLS/role issue)";
+          throw new Error(`Profile for "${username}" still missing after attach (${real || attachError?.message || "attach unavailable — the admin-users Edge Function is not deployed"}). Your session sees: ${visibility}. Deploy the function (DEPLOY.md), reload, and create again.`);
+        }
       }
-      if (result.needsConfirm) {
+      if (result.needsConfirm && !attached) {
         // Browser signUp cannot confirm emails; block login until confirmed.
         showUserFormError(`"${username}" was created, but email confirmation is ON in Supabase, so login fails with "Email not confirmed" until confirmed. Fix: Supabase > Authentication > Sign In / Providers > turn Confirm email OFF, or confirm the user under Authentication > Users. Deploying the admin-users function auto-confirms new users.`);
         toast("User created, but email must be confirmed before login.");
       } else {
-        toast(`"${username}" ${t("tUserAdd")}`);
+        toast(`"${username}" ${attached ? "attached and confirmed — login now" : t("tUserAdd")}`);
       }
       logActivity("Create user", `${username} — ${roleLabel(role)}`);
     }
