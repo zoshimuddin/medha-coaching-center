@@ -2633,7 +2633,7 @@ async function createUserViaEdge(email, password, profile) {
     if (/already|exists|duplicate|been taken/i.test(real)) {
       try {
         ({ data, error } = await sb.functions.invoke("admin-users", {
-          body: { action: "attach", email, profile },
+          body: { action: "attach", email, password, profile },
         }));
       } catch (err) {
         error = err;

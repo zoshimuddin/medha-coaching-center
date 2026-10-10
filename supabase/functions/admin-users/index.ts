@@ -109,7 +109,12 @@ Deno.serve(async (req) => {
       student_id: (profile.student_id as string) || null,
     });
     if (profileErr) return json({ error: profileErr.message }, 400);
-    const { error: confirmErr } = await admin.auth.admin.updateUserById(existing.id, { email_confirm: true });
+    // Confirm the email and, when a password was provided, (re)set it so the
+    // account is immediately usable with the credentials from the form.
+    const updates: Record<string, unknown> = { email_confirm: true };
+    const password = String(body.password ?? "");
+    if (password.length >= 6) updates.password = password;
+    const { error: confirmErr } = await admin.auth.admin.updateUserById(existing.id, updates);
     if (confirmErr) return json({ error: confirmErr.message }, 400);
     return json({ id: existing.id, attached: true });
   }
