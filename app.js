@@ -2723,12 +2723,13 @@ els.userForm.addEventListener("submit", async (event) => {
           throw new Error(`${fallbackErr.message} (Deploy the admin-users function for reliable user creation — see DEPLOY.md.)`);
         }
       }
-      // Verify the profile row really exists before claiming success; without
-      // it the user never appears in the list and permissions do not resolve.
-      const { data: createdProfile, error: verifyErr } = await sb.from("profiles").select("id, username").eq("id", result.id).maybeSingle();
+      // Verify by username (unique) instead of the returned id, so a missing
+      // or malformed id from the edge response can never reach a uuid column.
+      // Without a profile row the user cannot appear in the list or log in.
+      const { data: createdProfile, error: verifyErr } = await sb.from("profiles").select("id, username").eq("username", username).maybeSingle();
       if (verifyErr) throw verifyErr;
       if (!createdProfile) {
-        throw new Error("Account created in Auth, but the profile row is missing — the user list and login will not work. Deploy the admin-users Edge Function (see DEPLOY.md) and create this user again.");
+        throw new Error(`Account created in Auth, but the profile row for "${username}" is missing, so it cannot appear in the list or log in. Fix: Supabase > Authentication > Users — delete the half-created "${email}" entry, deploy the admin-users Edge Function (DEPLOY.md), then create the user again.`);
       }
       if (result.needsConfirm) {
         // Browser signUp cannot confirm emails; block login until confirmed.
