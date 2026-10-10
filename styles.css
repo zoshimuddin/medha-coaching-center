@@ -2202,7 +2202,95 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
   }
 }
 
-/* ---------- header compaction ---------- */
+/* ---------- subjects: course includes, filters, home cards ---------- */
+
+.course-includes {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sub-panel {
+  margin: 4px 0 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--page);
+}
+
+.student-card-courses {
+  font-size: 12px;
+  color: var(--accent-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.form-error-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #f7d4d0;
+  background: #fdeeed;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.subject-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.subject-card {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+  min-height: 84px;
+  box-shadow: var(--shadow);
+}
+
+.subject-card:hover,
+.subject-card:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-softer);
+}
+
+.subject-card-type {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+}
+
+.subject-card strong {
+  font-size: 15px;
+  line-height: 1.25;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.subject-card-count {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+@media (max-width: 620px) {
+  .subject-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .subject-card { padding: 12px; min-height: 76px; }
+}
 
 html, body { overflow-x: clip; }
 

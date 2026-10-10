@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
     const password = String(body.password ?? "");
     const profile = (body.profile ?? {}) as Record<string, unknown>;
     const role = String(profile.role ?? "viewer");
-    if (!email || password.length < 4) return json({ error: "email and 4+ char password required" }, 400);
+    if (!email || password.length < 6) return json({ error: "Email and a 6+ character password are required. Supabase Auth rejects shorter passwords." }, 400);
     const assignable = ["admin", "subadmin", "editor", "viewer", "accountant", "teacher", "student"];
     if (!assignable.includes(role)) return json({ error: "invalid role" }, 400);
 

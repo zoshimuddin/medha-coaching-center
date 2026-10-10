@@ -20,9 +20,14 @@ same live database e thake. localStorage ar nei.
 6. Run `supabase/20261010_user_delete_fk.sql` so deleting users from
    **Settings > User management** never fails on old attendance, teacher
    payment, or bank records.
-7. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+7. Run `supabase/20261011_package_subjects_attendance.sql` for package →
+   subject membership (Science Full, Commerce Full, ...) and subject-aware
+   attendance rosters and counts. After running it, open each package in
+   **Courses** and confirm its included subjects, then save once so custom
+   packages are mapped too.
+8. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
    off if users should be created without email confirmation.
-8. Create the owner account in **Authentication > Users > Add user** and copy
+9. Create the owner account in **Authentication > Users > Add user** and copy
    its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -32,8 +37,8 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-9. Onno user ra ekhon **Settings > User management** thekei banano jabe
-   (super admin login kore).
+10. Onno user ra ekhon **Settings > User management** thekei banano jabe
+    (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function
 

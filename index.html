@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Medha Coaching Center Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=7" />
+    <link rel="stylesheet" href="./styles.css?v=8" />
   </head>
   <body>
     <div id="loginView" class="login-wrap" hidden>
@@ -150,6 +150,11 @@
                 <div id="attendanceSummary" class="compact-list"></div>
               </section>
             </div>
+
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3>Enrollment by subject &amp; package</h3></div>
+              <div id="homeSubjectCards" class="subject-card-grid"></div>
+            </section>
           </section>
 
           <section id="reminders" class="view">
@@ -257,6 +262,10 @@
                 <span class="sr-only">Search students</span>
                 <input id="studentSearch" class="search-input" type="search" placeholder="Search name, student ID, or mobile" />
               </label>
+              <label class="student-search-label">
+                <span class="sr-only">Filter by subject or package</span>
+                <select id="studentSubjectFilter" aria-label="Filter by subject or package"></select>
+              </label>
               <div id="studentExtraFilters" class="inline-tools filter-tools" hidden>
                 <select id="studentCollegeFilter" aria-label="Filter by college"></select>
                 <select id="studentYearFilter" aria-label="Filter by year"></select>
@@ -336,6 +345,10 @@
                   <span data-i18n="courseDuration">মেয়াদ / বিবরণ</span>
                   <input id="courseDuration" type="text" maxlength="140" />
                 </label>
+                <div id="courseSubjectsWrap" class="panel sub-panel" hidden>
+                  <p class="muted-note">Included subjects — students of this package appear in these subject classes too.</p>
+                  <div id="courseSubjectsBox" class="check-grid"></div>
+                </div>
                 <div class="form-actions">
                   <button id="courseSubmitBtn" class="primary-btn" type="submit">Add course</button>
                   <button id="courseCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button>
@@ -367,7 +380,7 @@
               <form id="offeringForm" class="offering-form">
                 <div class="form-row">
                   <label>
-                    <span data-i18n="courseName">Course *</span>
+                    <span data-i18n="subjectName">Subject *</span>
                     <select id="offeringCourse" required></select>
                   </label>
                   <label>
@@ -678,8 +691,10 @@
                 </label>
                 <label id="userPassWrap">
                   <span data-i18n="passwordStar">পাসওয়ার্ড *</span>
-                  <input id="userPass" type="text" required minlength="4" maxlength="60" />
+                  <input id="userPass" type="text" required minlength="6" maxlength="60" autocomplete="new-password" />
                 </label>
+                <p class="muted-note">Password must be at least 6 characters (Supabase rule).</p>
+                <p id="userFormError" class="form-error-note" role="alert" hidden></p>
                 <p id="userPassNote" class="muted-note" hidden data-i18n="passDashNote">পাসওয়ার্ড বদলাতে Supabase dashboard ব্যবহার করো</p>
                 <label>
                   <span data-i18n="role">রোল</span>
@@ -786,6 +801,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="./app.js?v=8"></script>
+    <script src="./app.js?v=9"></script>
   </body>
 </html>

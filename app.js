@@ -40,6 +40,7 @@ const I18N = {
     thName: "Name", thContact: "Contact", thCollege: "College", thYear: "Year", thGroup: "Group",
     thCourse: "Course", thFeeStatus: "Fee Status", thAction: "Action",
     courseName: "Name *", courseType: "Type", typeSubject: "Single subject", typePackage: "Package",
+    subjectName: "Subject *",
     courseFee: "Default monthly fee (BDT)", courseDuration: "Duration / details", cMonthlyFee: "Monthly fee",
     courseList: "All Courses & Packages", fAll: "All", onlySubject: "Subjects only", onlyPackage: "Packages only",
     scheduleTitle: "Weekly Schedule (course + year + group)", assignTeacher: "Teacher",
@@ -294,6 +295,7 @@ let pendingDiscount = null;
 let ideaFilter = "All";
 let reportPeriod = "month";
 let coursePickerTab = "subject";
+let pendingSubjectFilter = null;
 
 const els = {};
 for (const el of document.querySelectorAll("[id]")) els[el.id] = el;
@@ -370,6 +372,41 @@ function studentCourseNames(student) {
   return (student.enrollments || []).map((e) => getCourseName(e.courseId)).filter((n) => n && n !== t("dash"));
 }
 
+function courseById(id) { return state.courses.find((c) => c.id === id); }
+function includedSubjectIds(course) { return Array.isArray(course?.includedSubjectIds) ? course.includedSubjectIds : []; }
+function courseTypeOf(id) { return courseById(id)?.type || "subject"; }
+
+// A student belongs to a course when enrolled directly, or through a package
+// that includes that subject (Science Full -> Physics, Chemistry, ...).
+function studentInCourse(student, courseId) {
+  const enrolled = student.enrollments || [];
+  if (enrolled.some((e) => e.courseId === courseId)) return true;
+  const course = courseById(courseId);
+  if (!course || course.type !== "subject") return false;
+  return state.courses.some((pkg) => pkg.type === "package"
+    && includedSubjectIds(pkg).includes(courseId)
+    && enrolled.some((e) => e.courseId === pkg.id));
+}
+
+function courseEnrollmentCount(courseId) {
+  return state.students.filter((s) => s.status === "active" && studentInCourse(s, courseId)).length;
+}
+
+function formatClassTime(value) {
+  if (!value) return "";
+  const [h, m] = String(value).split(":").map(Number);
+  if (Number.isNaN(h)) return String(value);
+  const suffix = h >= 12 ? "PM" : "AM";
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${hour12}:${String(Number.isNaN(m) ? 0 : m).padStart(2, "0")} ${suffix}`;
+}
+
+// Everyone who can take attendance can also be assigned to a class.
+function eligibleTeachers() {
+  return state.users.filter((u) => isManagerRole(u.role) || u.role === "teacher" || (u.tabs || []).includes("attendance"));
+}
+function isManagerRole(role) { return role === "admin" || role === "subadmin"; }
+
 /* ================= data layer ================= */
 
 const db = {
@@ -390,7 +427,7 @@ const db = {
       };
     }
     state.batches = batches.map((r) => ({ id: r.id, name: r.name, teacher: r.teacher || "", schedule: r.schedule || "", createdAt: Date.parse(r.created_at) }));
-    state.courses = courses.map((r) => ({ id: r.id, name: r.name, type: r.type, fee: Number(r.fee || 0), duration: r.duration || "", createdAt: Date.parse(r.created_at) }));
+    state.courses = courses.map((r) => ({ id: r.id, name: r.name, type: r.type, fee: Number(r.fee || 0), duration: r.duration || "", includedSubjectIds: Array.isArray(r.included_subject_ids) ? r.included_subject_ids : [], createdAt: Date.parse(r.created_at) }));
     state.offerings = offerings.map((r) => ({
       id: r.id, courseId: r.course_id, year: r.year_level, group: r.group_name,
       batchId: r.batch_id || "", teacherId: r.teacher_id || "",
@@ -1238,11 +1275,31 @@ const SVG_ICONS = {
   trash: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`,
 };
 
+function renderStudentSubjectFilter() {
+  const prev = pendingSubjectFilter || els.studentSubjectFilter.value || "all";
+  const withCounts = (type) => state.courses
+    .filter((c) => c.type === type)
+    .map((c) => ({ course: c, count: courseEnrollmentCount(c.id) }))
+    .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
+  const subjects = withCounts("subject");
+  const packages = withCounts("package");
+  const opt = ({ course, count }) => `<option value="${course.id}">${escapeHtml(course.name)} (${toNum(count)})</option>`;
+  els.studentSubjectFilter.innerHTML = [
+    `<option value="all">All subjects &amp; packages</option>`,
+    subjects.length ? `<optgroup label="Subjects">${subjects.map(opt).join("")}</optgroup>` : "",
+    packages.length ? `<optgroup label="Packages">${packages.map(opt).join("")}</optgroup>` : "",
+  ].join("");
+  els.studentSubjectFilter.value = state.courses.some((c) => c.id === prev) ? prev : "all";
+  pendingSubjectFilter = null;
+  return els.studentSubjectFilter.value;
+}
+
 function renderStudents() {
   const editable = canEditTab("students");
   const query = els.studentSearch.value.trim().toLowerCase();
   const college = els.studentCollegeFilter.value || "all";
   const year = els.studentYearFilter.value || "all";
+  const subjectFilter = renderStudentSubjectFilter();
   const monthPrefix = today.slice(0, 7);
   els.studentTotalCount.textContent = toNum(state.students.length);
   els.studentActiveCount.textContent = toNum(state.students.filter((s) => s.status === "active").length);
@@ -1262,6 +1319,7 @@ function renderStudents() {
     if (s.status !== studentStatusFilter) return false;
     if (college !== "all" && s.college !== college) return false;
     if (year !== "all" && s.year !== year) return false;
+    if (subjectFilter !== "all" && !studentInCourse(s, subjectFilter)) return false;
     return studentMatches(s, query);
   });
   els.studentCards.innerHTML = students.length
@@ -1275,6 +1333,7 @@ function renderStudents() {
             <strong>${escapeHtml(s.name)}</strong>
             <span><span translate="no">${escapeHtml(s.studentNumber || "")}</span> · ${escapeHtml(yearLabel(s.year))}</span>
             <span class="admitted-line">Admitted ${escapeHtml(s.admissionDate || "—")}</span>
+            ${studentCourseNames(s).length ? `<span class="student-card-courses">${escapeHtml(studentCourseNames(s).join(" · "))}</span>` : ""}
           </div>
           <div class="student-card-side">
             <span class="badge ${s.status === "active" ? "paid" : "due"}">${s.status === "active" ? "Active" : "Inactive"}</span>
@@ -1367,6 +1426,7 @@ function resetStudentForm() {
 els.studentSearch.addEventListener("input", renderStudents);
 els.studentCollegeFilter.addEventListener("change", renderStudents);
 els.studentYearFilter.addEventListener("change", renderStudents);
+els.studentSubjectFilter.addEventListener("change", renderStudents);
 
 /* ================= courses ================= */
 
@@ -1377,7 +1437,12 @@ els.courseForm.addEventListener("submit", async (event) => {
   if (!name) { toast(t("msgCourseReq")); els.courseName.focus(); return; }
   const fee = Number(els.courseFee.value === "" ? 0 : els.courseFee.value);
   if (Number.isNaN(fee) || fee < 0) { toast(t("msgCourseFeeNeg")); return; }
-  const row = { name, type: els.courseType.value, fee, duration: els.courseDuration.value.trim() };
+  const type = els.courseType.value;
+  const row = {
+    name, type, fee,
+    duration: els.courseDuration.value.trim(),
+    included_subject_ids: type === "package" ? selectedCourseSubjects() : [],
+  };
   try {
     if (editingCourseId) {
       const { error } = await sb.from("courses").update(row).eq("id", editingCourseId);
@@ -1407,6 +1472,7 @@ function resetCourseForm() {
   els.courseFormTitle.textContent = t("newCourse");
   els.courseSubmitBtn.textContent = t("addCourseBtn");
   els.courseCancelBtn.hidden = true;
+  renderCourseSubjectsBox([]);
 }
 
 function startEditCourse(id) {
@@ -1421,17 +1487,39 @@ function startEditCourse(id) {
   els.courseType.value = course.type || "subject";
   els.courseFee.value = course.fee ?? "";
   els.courseDuration.value = course.duration || "";
+  renderCourseSubjectsBox(includedSubjectIds(course));
   switchView("courses", viewTitle("courses"));
   els.courseName.focus();
 }
 
+function selectedCourseSubjects() { return [...els.courseSubjectsBox.querySelectorAll("input:checked")].map((c) => c.value); }
+
+// Packages list the subjects they cover so their students join those subject
+// classes as well as the package itself.
+function renderCourseSubjectsBox(selected = []) {
+  const subjects = state.courses.filter((c) => c.type === "subject");
+  els.courseSubjectsBox.innerHTML = subjects.length
+    ? subjects.map((s) => `
+        <label class="check-line">
+          <input type="checkbox" value="${s.id}" ${selected.includes(s.id) ? "checked" : ""} /> ${escapeHtml(s.name)}
+        </label>`).join("")
+    : `<span class="muted-note">Add subject courses first, then pick them here.</span>`;
+  els.courseSubjectsWrap.hidden = els.courseType.value !== "package";
+}
+
+els.courseType.addEventListener("change", () => renderCourseSubjectsBox(selectedCourseSubjects()));
+
 function courseCard(course, count, extraClass) {
   const editable = canEditTab("courses");
+  const included = course.type === "package"
+    ? includedSubjectIds(course).map((id) => getCourseName(id)).filter((name) => name && name !== t("dash"))
+    : [];
   return `
     <article class="batch-card${extraClass ? " " + extraClass : ""}">
       <strong>${escapeHtml(course.name)}</strong>
       <span>${courseTypeLabel(course.type)} · ${formatMoney(course.fee || 0)}</span>
       <p>${escapeHtml(course.duration || t("noDesc"))}</p>
+      ${included.length ? `<p class="course-includes">Includes: ${escapeHtml(included.join(" · "))}</p>` : ""}
       <span class="badge">${toNum(count)} ${t("enrolledSuffix")}</span>
       ${editable ? `<div class="inline-tools">
         <button class="small-btn" type="button" data-edit-course="${course.id}">${t("edit")}</button>
@@ -1444,7 +1532,7 @@ function renderCourses() {
   const filter = els.courseFilter.value;
   const candidates = state.courses
     .filter((c) => filter === "all" || c.type === filter)
-    .map((course) => ({ course, count: state.students.filter((s) => isEnrolled(s, course.id)).length }))
+    .map((course) => ({ course, count: courseEnrollmentCount(course.id) }))
     .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
   const top = candidates.slice(0, 3);
   const rest = candidates.slice(3);
@@ -1542,11 +1630,11 @@ function renderOfferingForm() {
   els.offeringCourse.innerHTML = state.courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
   if (state.courses.some((c) => c.id === prevCourse)) els.offeringCourse.value = prevCourse;
 
-  const teachers = state.users.filter((u) => u.role === "teacher");
+  const teachers = eligibleTeachers();
   const prevTeacher = els.offeringTeacher.value;
   els.offeringTeacher.innerHTML = [
     `<option value="">${t("noTeacherAssigned")}</option>`,
-    ...teachers.map((u) => `<option value="${u.id}">${escapeHtml(u.username)}</option>`),
+    ...teachers.map((u) => `<option value="${u.id}">${escapeHtml(u.username)} · ${escapeHtml(roleLabel(u.role))}</option>`),
   ].join("");
   if (teachers.some((u) => u.id === prevTeacher)) els.offeringTeacher.value = prevTeacher;
 
@@ -1617,7 +1705,7 @@ function renderOfferings() {
         <div class="compact-item">
           <div>
             <strong>${escapeHtml(getCourseName(o.courseId))}</strong>
-            <span>${escapeHtml(yearLabel(o.year))} · ${escapeHtml(o.group)} · ${getTeacherName(o.teacherId)} · ${o.weekdays.map(dayLabel).join(", ")}${o.classTime ? " · " + escapeHtml(o.classTime) : ""}</span>
+            <span>${escapeHtml(yearLabel(o.year))} · ${escapeHtml(o.group)} · ${getTeacherName(o.teacherId)} · ${o.weekdays.map(dayLabel).join(", ")}${o.classTime ? " · " + escapeHtml(formatClassTime(o.classTime)) : ""}</span>
           </div>
           <span class="badge">${formatMoney(o.rate)} / class</span>
           ${editable ? `<div class="inline-tools">
@@ -1706,7 +1794,7 @@ async function renderAttendanceClasses() {
   els.attendanceSubject.innerHTML = mine.length
     ? mine.map((o) => {
         const count = state.offeringCounts[o.id] ?? 0;
-        return `<option value="${o.id}">${escapeHtml(getCourseName(o.courseId))} · ${escapeHtml(yearLabel(o.year))}${o.group ? " · " + escapeHtml(o.group) : ""} (${count})</option>`;
+        return `<option value="${o.id}">${escapeHtml(getCourseName(o.courseId))} · ${escapeHtml(yearLabel(o.year))}${o.group ? " · " + escapeHtml(o.group) : ""}${o.classTime ? " · " + escapeHtml(formatClassTime(o.classTime)) : ""} (${count})</option>`;
       }).join("")
     : `<option value="">No class scheduled</option>`;
   if (mine.some((o) => o.id === prev)) els.attendanceSubject.value = prev;
@@ -2543,7 +2631,12 @@ async function createUserFallback(email, password, profile) {
   const { data: signUpData, error: signUpErr } = await sb.auth.signUp({ email, password });
   if (signUpErr) throw signUpErr;
   const newId = signUpData?.user?.id;
-  if (!newId) throw new Error(t("msgEmailConfirm"));
+  const identities = signUpData?.user?.identities;
+  // Supabase returns an obfuscated user with no identities when the email is
+  // already registered, so a missing id alone is not enough to detect this.
+  if (!newId || (Array.isArray(identities) && identities.length === 0)) {
+    throw new Error("This email already has an account. Use a different email.");
+  }
   // With email confirmation off, signUp returns a session and swaps the client
   // to the new user. Restore the admin's session first, otherwise the profile
   // insert below runs as the new user and is blocked by the admin-only RLS policy.
@@ -2558,12 +2651,19 @@ async function createUserFallback(email, password, profile) {
   return { id: newId, needsConfirm: !signUpData.session };
 }
 
+function showUserFormError(message) {
+  if (!els.userFormError) return;
+  els.userFormError.textContent = message || "";
+  els.userFormError.hidden = !message;
+}
+
 els.userForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!isAdmin()) { toast(t("msgAdminOnly")); return; }
   const username = els.userName.value.trim().toLowerCase();
   const email = els.userEmail.value.trim().toLowerCase();
   const pass = els.userPass.value;
+  showUserFormError("");
   if (!username) { toast(t("msgUserReq")); return; }
   const role = els.userRole.value;
   if (role === "student" && !els.userStudent.value) { toast(t("msgLinkStudent")); return; }
@@ -2576,6 +2676,10 @@ els.userForm.addEventListener("submit", async (event) => {
     student_id: role === "student" ? els.userStudent.value : "",
   };
 
+  const submitBtn = els.userSubmitBtn;
+  const originalLabel = submitBtn.textContent;
+  submitBtn.disabled = true;
+  if (!editingUserId) submitBtn.textContent = "Creating…";
   try {
     if (editingUserId) {
       const user = state.users.find((u) => u.id === editingUserId);
@@ -2599,18 +2703,28 @@ els.userForm.addEventListener("submit", async (event) => {
     } else {
       if (!email) { toast(t("msgNeedEmail")); els.userEmail.focus(); return; }
       if (state.users.some((u) => u.username === username)) { toast(t("msgUserExists")); return; }
-      if (!pass || pass.length < 4) { toast(t("msgPassShort")); return; }
+      // Supabase Auth rejects passwords under 6 characters.
+      if (!pass || pass.length < 6) { toast("Password must be at least 6 characters."); els.userPass.focus(); return; }
       let result = await createUserViaEdge(email, pass, profile);
       if (result.skipped) {
         console.warn("admin-users edge function not deployed; using browser signUp fallback");
-        result = await createUserFallback(email, pass, profile);
+        try {
+          result = await createUserFallback(email, pass, profile);
+        } catch (fallbackErr) {
+          throw new Error(`${fallbackErr.message} (Deploy the admin-users function for reliable user creation — see DEPLOY.md.)`);
+        }
       }
       toast(result.needsConfirm ? t("msgEmailConfirm") : `"${username}" ${t("tUserAdd")}`);
       logActivity("Create user", `${username} — ${roleLabel(role)}`);
     }
   } catch (err) {
+    const message = String(err?.message || err || "Could not create the user.");
+    showUserFormError(message);
     fail(err);
     return;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalLabel;
   }
   resetUserForm();
   await db.loadAdmin();
@@ -2622,6 +2736,7 @@ els.userCancelBtn.addEventListener("click", resetUserForm);
 
 function resetUserForm() {
   editingUserId = null;
+  showUserFormError("");
   els.userForm.reset();
   els.userRole.value = "editor";
   renderUserTabsBox(ROLE_DEFAULTS.editor.tabs);
@@ -2811,6 +2926,25 @@ async function renderDashboard() {
   els.attendanceSummary.innerHTML = `
     <div class="compact-item"><div><strong>${toNum(presentCount)}</strong><span>${t("attPresent")}</span></div><span class="badge paid">${t("present")}</span></div>
     <div class="compact-item"><div><strong>${toNum(absentCount)}</strong><span>${t("attAbsent")}</span></div><span class="badge due">${t("absent")}</span></div>`;
+
+  // Per-subject/package enrollment cards; clicking one filters the Students tab.
+  const cards = state.courses
+    .map((course) => ({ course, count: courseEnrollmentCount(course.id) }))
+    .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
+  els.homeSubjectCards.innerHTML = cards.length
+    ? cards.map(({ course, count }) => `
+        <button type="button" class="subject-card" data-subject-card="${course.id}">
+          <span class="subject-card-type">${courseTypeLabel(course.type)}</span>
+          <strong>${escapeHtml(course.name)}</strong>
+          <span class="subject-card-count">${toNum(count)} ${t("studentsSuffix")}</span>
+        </button>`).join("")
+    : emptyState(t("emptyCourse"));
+  els.homeSubjectCards.querySelectorAll("[data-subject-card]").forEach((button) =>
+    button.addEventListener("click", () => {
+      pendingSubjectFilter = button.dataset.subjectCard;
+      switchView("students", viewTitle("students"));
+      renderStudents();
+    }));
 }
 
 function barRow(label, value, max, money) {
@@ -2826,7 +2960,7 @@ function barRow(label, value, max, money) {
 function renderCharts() {
   if (!canView("dashboard")) return;
   const courseCounts = state.courses
-    .map((c) => ({ name: c.name, count: state.students.filter((s) => isEnrolled(s, c.id)).length }))
+    .map((c) => ({ name: c.name, count: courseEnrollmentCount(c.id) }))
     .filter((c) => c.count > 0);
   const maxCourse = Math.max(1, ...courseCounts.map((c) => c.count));
   els.chartCourses.innerHTML = courseCounts.length
@@ -3274,6 +3408,7 @@ function renderAll() {
   renderBatches();
   renderStudents();
   renderCourses();
+  renderCourseSubjectsBox(els.courseSubjectsWrap.hidden ? [] : selectedCourseSubjects());
   renderOfferings();
   renderAttendanceClasses();
   renderFees();
