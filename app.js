@@ -1179,13 +1179,13 @@ function renderStudentCourseBox() {
     const saved = enrolled.find((e) => e.courseId === c.id);
     const prevRow = prev.get(c.id);
     const checked = prevRow ? prevRow.checked : !!saved;
-    const fee = prevRow ? prevRow.fee : (saved ? saved.fee : (c.fee ?? 0));
+    // Fees are fixed to the course/package default; they change in Courses.
     return `
           <div class="course-pick${checked ? " picked" : ""}">
             <label class="check-line">
               <input type="checkbox" value="${c.id}" ${checked ? "checked" : ""} /> ${escapeHtml(c.name)}
             </label>
-            <input type="number" min="0" step="100" value="${Number(fee || 0)}" ${checked ? "" : "disabled"} aria-label="${tr("cMonthlyFee")}" />
+            <input type="number" min="0" step="100" value="${Number(c.fee || 0)}" ${checked ? "" : "disabled"} readonly aria-label="${tr("cMonthlyFee")}" />
           </div>`;
   };
   const groupHtml = (type, title) => {
@@ -3113,11 +3113,13 @@ async function renderDashboard() {
     <div class="compact-item"><div><strong>${toNum(presentCount)}</strong><span>${t("attPresent")}</span></div><span class="badge paid">${t("present")}</span></div>
     <div class="compact-item"><div><strong>${toNum(absentCount)}</strong><span>${t("attAbsent")}</span></div><span class="badge due">${t("absent")}</span></div>`;
 
-  // Per-subject/package enrollment cards; clicking one filters the Students tab.
+  // Per-subject/package enrollment cards; subjects first, then packages.
   renderEnrollmentYearTabs(els.homeYearTabs);
-  const cards = state.courses
+  const withCounts = (type) => state.courses
+    .filter((course) => course.type === type)
     .map((course) => ({ course, count: courseEnrollmentCount(course.id) }))
     .sort((a, b) => b.count - a.count || a.course.name.localeCompare(b.course.name));
+  const cards = [...withCounts("subject"), ...withCounts("package")];
   els.homeSubjectCards.innerHTML = cards.length
     ? cards.map(({ course, count }) => `
         <button type="button" class="subject-card" data-subject-card="${course.id}">
