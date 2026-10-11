@@ -40,7 +40,7 @@ begin
     '', '', '', '', '', '', '', now(), now());
 
   insert into auth.identities (id, user_id, provider_id, provider, identity_data, last_sign_in_at, created_at, updated_at)
-  values (gen_random_uuid(), v_uid, 'email', 'email',
+  values (gen_random_uuid(), v_uid, v_uid::text, 'email',
     jsonb_build_object('sub', v_uid::text, 'email', v_email, 'email_verified', true, 'phone_verified', false),
     now(), now(), now());
 
