@@ -275,7 +275,7 @@ const state = {
   students: [], invoices: [], money: [], dues: [],
   bank: { opening: 0 }, bankTx: [],
   teacherPayments: [], heldSessions: [],
-  users: [], activity: [], feePayments: [], feeDiscounts: [], usersLoadError: "", admissions: [],
+  users: [], activity: [], feePayments: [], feeDiscounts: [], usersLoadError: "", admissions: [], teacherAdjustments: [],
   ideas: [], offeringCounts: {}, trash: [],
 };
 let editingStudentId = null;
@@ -297,6 +297,7 @@ let reportPeriod = "month";
 let coursePickerTab = "subject";
 let pendingSubjectFilter = null;
 let enrollmentYearFilter = "all";
+let studentYearChip = "all";
 
 const els = {};
 for (const el of document.querySelectorAll("[id]")) els[el.id] = el;
@@ -528,12 +529,14 @@ const db = {
   },
 
   async loadPayroll() {
-    if (!canView("payroll")) { state.teacherPayments = []; state.heldSessions = []; return; }
-    const [payments, sessions] = await Promise.all([
+    if (!canView("payroll")) { state.teacherPayments = []; state.heldSessions = []; state.teacherAdjustments = []; return; }
+    const [payments, sessions, adjustments] = await Promise.all([
       safe(sb.from("teacher_payments").select("*").order("paid_at", { ascending: false })),
       safe(sb.from("class_sessions").select("*, course_offerings!inner(teacher_id, course_id, year_level, group_name)").eq("status", "held").order("class_date", { ascending: false }).limit(500)),
+      safe(sb.from("teacher_adjustments").select("*").order("created_at", { ascending: false })),
     ]);
     state.teacherPayments = (payments || []).map((r) => ({ id: r.id, teacherId: r.teacher_id, amount: Number(r.amount || 0), paidAt: Date.parse(r.paid_at), note: r.note || "" }));
+    state.teacherAdjustments = (adjustments || []).map((r) => ({ id: r.id, teacherId: r.teacher_id, amount: Number(r.amount || 0), note: r.note || "", createdAt: Date.parse(r.created_at) }));
     state.heldSessions = (sessions || []).map((r) => ({
       id: r.id, date: r.class_date, rate: Number(r.rate_snapshot || 0),
       teacherId: r.course_offerings.teacher_id, courseId: r.course_offerings.course_id,
@@ -543,6 +546,10 @@ const db = {
 
   async loadAdmin() {
     if (!isManager()) { state.users = []; state.activity = []; state.usersLoadError = ""; return; }
+    // User history auto-expires: entries older than 30 days are removed.
+    if (isAdmin()) {
+      await safe(sb.from("activity_log").delete().lt("created_at", new Date(Date.now() - 30 * 86400000).toISOString()));
+    }
     const [usersResult, activity] = await Promise.all([
       isAdmin()
         ? sb.from("profiles").select("*").order("created_at", { ascending: true })
@@ -918,10 +925,9 @@ function requireEdit(tab) {
 
 function applyBrand() {
   const name = state.settings.coachingName || "Medha Coaching Center";
-  const shortName = name.trim().split(/\s+/)[0] || "Medha";
   const logo = state.settings.logoData || "";
   els.brandName.textContent = name;
-  els.brandNameMobile.textContent = shortName;
+  els.brandNameMobile.textContent = name;
   els.loginBrandName.textContent = name;
   document.title = `${name} Manager`;
   for (const [img, mark] of [
@@ -989,18 +995,13 @@ function prefillFromScan(fields) {
   const unmatched = [];
   if (fields.name) { els.studentName.value = String(fields.name); found++; }
   if (fields.guardian) { els.guardianName.value = String(fields.guardian); found++; }
+  // The scanned college must match one of the configured names; otherwise it
+  // is left empty so nothing invented by the AI is saved silently.
+  let collegeMissing = false;
   if (fields.college) {
-    const college = String(fields.college).trim();
-    if (college) {
-      if (!collegesList().includes(college)) {
-        const opt = document.createElement("option");
-        opt.value = college;
-        opt.textContent = college;
-        els.studentCollege.appendChild(opt);
-      }
-      els.studentCollege.value = college;
-      found++;
-    }
+    const match = matchCollege(String(fields.college));
+    if (match) { els.studentCollege.value = match; found++; }
+    else collegeMissing = true;
   }
   const phone = String(fields.whatsapp || "").replace(/\D/g, "");
   if (phone) {
@@ -1055,7 +1056,20 @@ function prefillFromScan(fields) {
   } else {
     els.studentDetailTitle.textContent = "New student";
   }
-  return { found, unmatched };
+  return { found, unmatched, collegeMissing };
+}
+
+function matchCollege(input) {
+  const norm = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9\u0980-\u09FF]+/g, "");
+  const target = norm(input);
+  if (!target) return "";
+  const list = collegesList();
+  for (const c of list) if (norm(c) === target) return c;
+  for (const c of list) {
+    const key = norm(c);
+    if (key && (key.includes(target) || target.includes(key))) return c;
+  }
+  return "";
 }
 
 function setScanStatus(message, kind) {
@@ -1079,6 +1093,7 @@ els.scanFileInput.addEventListener("change", async () => {
         image,
         mime,
         courses: state.courses.map((c) => ({ id: c.id, name: c.name })),
+        colleges: collegesList(),
       },
     });
     if (error) {
@@ -1093,9 +1108,11 @@ els.scanFileInput.addEventListener("change", async () => {
       console.warn("scan-form error:", error, real);
       return;
     }
-    const { found, unmatched } = prefillFromScan(data?.fields || {});
+    const { found, unmatched, collegeMissing } = prefillFromScan(data?.fields || {});
     if (found > 0) {
-      setScanStatus(`${toNum(found)} fields filled automatically — review everything before saving.${unmatched.length ? ` Could not match: ${unmatched.join(", ")}` : ""}`, "ok");
+      setScanStatus(`${toNum(found)} fields filled automatically — review everything before saving.${unmatched.length ? ` Could not match: ${unmatched.join(", ")}` : ""}${collegeMissing ? " College not recognized — pick it manually." : ""}`, "ok");
+    } else if (collegeMissing) {
+      setScanStatus("Form readable, but the college name did not match your list — pick it manually and fill the rest by hand.", "fail");
     } else {
       setScanStatus("Nothing readable from the photo — fill the form manually.", "fail");
     }
@@ -1183,6 +1200,18 @@ function renderStudentCourseBox() {
     const box = row.querySelector("input[type='checkbox']");
     const feeInput = row.querySelector("input[type='number']");
     box.addEventListener("change", () => {
+      if (box.checked) {
+        // One course OR package at a time: picking a row clears every other.
+        els.studentCoursesBox.querySelectorAll(".course-pick").forEach((other) => {
+          if (other === row) return;
+          const otherBox = other.querySelector("input[type='checkbox']");
+          if (otherBox.checked) {
+            otherBox.checked = false;
+            other.classList.remove("picked");
+            other.querySelector("input[type='number']").disabled = true;
+          }
+        });
+      }
       row.classList.toggle("picked", box.checked);
       feeInput.disabled = !box.checked;
       if (box.checked && feeInput.value === "") {
@@ -1192,6 +1221,25 @@ function renderStudentCourseBox() {
     });
   });
 }
+
+function checkStudentDuplicates() {
+  const name = els.studentName.value.trim().toLowerCase();
+  const phone = els.studentPhone.value.replace(/\D/g, "");
+  const hits = state.students.filter((s) => {
+    if (editingStudentId && s.id === editingStudentId) return false;
+    const sameName = name && s.name && s.name.toLowerCase() === name;
+    const samePhone = phone && s.phone && s.phone.replace(/\D/g, "") === phone;
+    return sameName || samePhone;
+  });
+  els.studentDupWarning.hidden = hits.length === 0;
+  els.studentDupWarning.textContent = hits.length
+    ? `Duplicate: ${hits.map((s) => `${s.name} (${s.studentNumber || s.phone})`).join(", ")} — review before adding.`
+    : "";
+  return hits.length > 0;
+}
+
+els.studentName.addEventListener("input", checkStudentDuplicates);
+els.studentPhone.addEventListener("input", checkStudentDuplicates);
 
 document.querySelectorAll("[data-picker-tab]").forEach((button) =>
   button.addEventListener("click", () => switchCoursePickerTab(button.dataset.pickerTab)));
@@ -1224,6 +1272,12 @@ els.studentForm.addEventListener("submit", async (event) => {
   if (!enrollments.length) { missing.push("Course/Package"); flashInvalid(els.coursePickSection); }
   if (feeInvalid) { toast(t("msgFeeNeg")); return; }
   if (missing.length) { toast(`Fill required fields: ${missing.join(", ")}`); return; }
+  // Review gate: the admin confirms the full student summary before saving.
+  if (!editingStudentId) {
+    const dupNote = checkStudentDuplicates() ? "\nWARNING: this name/mobile matches an existing student." : "";
+    const summary = `Review before adding:\nName: ${name}\nMobile: ${phone}\n${els.studentCollege.value} · ${els.studentYear.value} · ${els.studentGroup.value}\nCourses: ${enrollments.map((e) => `${getCourseName(e.course_id)} ৳${toNum(e.fee)}`).join(", ") || "-"}\nAdmission fee ৳${toNum(state.settings.admissionFee)} (with first month)${dupNote}`;
+    if (!confirm(summary)) return;
+  }
   // Admission is not collected here anymore — it rides with the first month's
   // fee collection and is recorded by collect_student_admission.
   const admissionPaid = 0;
@@ -1338,7 +1392,6 @@ function renderStudents() {
   const editable = canEditTab("students");
   const query = els.studentSearch.value.trim().toLowerCase();
   const college = els.studentCollegeFilter.value || "all";
-  const year = els.studentYearFilter.value || "all";
   const subjectFilter = renderStudentSubjectFilter();
   const monthPrefix = today.slice(0, 7);
   els.studentTotalCount.textContent = toNum(state.students.length);
@@ -1351,14 +1404,26 @@ function renderStudents() {
   const prevCollege = els.studentCollegeFilter.value || "all";
   els.studentCollegeFilter.innerHTML = [`<option value="all">All colleges</option>`, ...colleges.map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)].join("");
   els.studentCollegeFilter.value = colleges.includes(prevCollege) ? prevCollege : "all";
-  const prevYear = els.studentYearFilter.value || "all";
-  els.studentYearFilter.innerHTML = [`<option value="all">All years</option>`, `<option value="1st year">1st year</option>`, `<option value="2nd year">2nd year</option>`].join("");
-  els.studentYearFilter.value = ["all", "1st year", "2nd year"].includes(prevYear) ? prevYear : "all";
+
+  // Year chips with live counts (ignores the year filter itself).
+  const yearCounts = { all: state.students.filter((s) => s.status === studentStatusFilter && (college === "all" || s.college === college)).length, "1st year": 0, "2nd year": 0 };
+  for (const s of state.students) {
+    if (s.status !== studentStatusFilter || (college !== "all" && s.college !== college)) continue;
+    if (yearCounts[s.year] !== undefined) yearCounts[s.year]++;
+  }
+  els.studentYearTabs.innerHTML = [["all", "All years"], ["1st year", "1st year"], ["2nd year", "2nd year"]]
+    .map(([value, label]) => `<button type="button" class="year-chip${studentYearChip === value ? " active" : ""}" data-student-year="${value}" aria-pressed="${studentYearChip === value}">${label} (${toNum(yearCounts[value] ?? 0)})</button>`)
+    .join("");
+  els.studentYearTabs.querySelectorAll("[data-student-year]").forEach((button) =>
+    button.addEventListener("click", () => {
+      studentYearChip = button.dataset.studentYear;
+      renderStudents();
+    }));
 
   const students = state.students.filter((s) => {
     if (s.status !== studentStatusFilter) return false;
     if (college !== "all" && s.college !== college) return false;
-    if (year !== "all" && s.year !== year) return false;
+    if (studentYearChip !== "all" && s.year !== studentYearChip) return false;
     if (subjectFilter !== "all" && !studentInCourse(s, subjectFilter)) return false;
     return studentMatches(s, query);
   });
@@ -1667,9 +1732,10 @@ function renderBatches() {
 /* ================= offerings (schedules) ================= */
 
 function renderOfferingForm() {
+  // Subjects only — packages are combinations, not class slots.
   const prevCourse = els.offeringCourse.value;
-  els.offeringCourse.innerHTML = state.courses.map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
-  if (state.courses.some((c) => c.id === prevCourse)) els.offeringCourse.value = prevCourse;
+  els.offeringCourse.innerHTML = state.courses.filter((c) => c.type === "subject").map((c) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join("");
+  if (state.courses.some((c) => c.id === prevCourse && c.type === "subject")) els.offeringCourse.value = prevCourse;
 
   const teachers = eligibleTeachers();
   const prevTeacher = els.offeringTeacher.value;
@@ -1678,10 +1744,6 @@ function renderOfferingForm() {
     ...teachers.map((u) => `<option value="${u.id}">${escapeHtml(u.username)} · ${escapeHtml(roleLabel(u.role))}</option>`),
   ].join("");
   if (teachers.some((u) => u.id === prevTeacher)) els.offeringTeacher.value = prevTeacher;
-
-  const prevGroup = els.offeringGroup.value;
-  els.offeringGroup.innerHTML = groupsList().map((g) => `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`).join("");
-  if (groupsList().includes(prevGroup)) els.offeringGroup.value = prevGroup;
 
   const prevDays = new Set([...els.offeringDaysBox.querySelectorAll("input:checked")].map((c) => c.value));
   els.offeringDaysBox.innerHTML = WEEKDAY_ORDER.map((d) => `
@@ -1700,7 +1762,7 @@ els.offeringForm.addEventListener("submit", async (event) => {
   const row = {
     course_id: courseId,
     year_level: els.offeringYear.value,
-    group_name: els.offeringGroup.value,
+    group_name: null,
     teacher_id: els.offeringTeacher.value || null,
     weekdays,
     class_time: els.offeringTime.value || null,
@@ -1746,7 +1808,7 @@ function renderOfferings() {
         <div class="compact-item">
           <div>
             <strong>${escapeHtml(getCourseName(o.courseId))}</strong>
-            <span>${escapeHtml(yearLabel(o.year))} · ${escapeHtml(o.group)} · ${getTeacherName(o.teacherId)} · ${o.weekdays.map(dayLabel).join(", ")}${o.classTime ? " · " + escapeHtml(formatClassTime(o.classTime)) : ""}</span>
+            <span>${escapeHtml(yearLabel(o.year))} · All groups · ${getTeacherName(o.teacherId)} · ${o.weekdays.map(dayLabel).join(", ")}${o.classTime ? " · " + escapeHtml(formatClassTime(o.classTime)) : ""}</span>
           </div>
           <span class="badge">${formatMoney(o.rate)} / class</span>
           ${editable ? `<div class="inline-tools">
@@ -1764,7 +1826,6 @@ function renderOfferings() {
       renderOfferingForm();
       els.offeringCourse.value = offering.courseId;
       els.offeringYear.value = offering.year;
-      els.offeringGroup.value = offering.group;
       els.offeringTeacher.value = offering.teacherId || "";
       els.offeringTime.value = offering.classTime || "";
       els.offeringRate.value = offering.rate;
@@ -1835,7 +1896,7 @@ async function renderAttendanceClasses() {
   els.attendanceSubject.innerHTML = mine.length
     ? mine.map((o) => {
         const count = state.offeringCounts[o.id] ?? 0;
-        return `<option value="${o.id}">${escapeHtml(getCourseName(o.courseId))} · ${escapeHtml(yearLabel(o.year))}${o.group ? " · " + escapeHtml(o.group) : ""}${o.classTime ? " · " + escapeHtml(formatClassTime(o.classTime)) : ""} (${count})</option>`;
+        return `<option value="${o.id}">${escapeHtml(getCourseName(o.courseId))} · ${escapeHtml(yearLabel(o.year))} · All groups${o.classTime ? " · " + escapeHtml(formatClassTime(o.classTime)) : ""} (${count})</option>`;
       }).join("")
     : `<option value="">No class scheduled</option>`;
   if (mine.some((o) => o.id === prev)) els.attendanceSubject.value = prev;
@@ -1910,9 +1971,10 @@ function renderRoster(roster) {
         ].filter(Boolean).join("");
         return `
         <div class="attendance-row">
+          <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
           <div class="attendance-copy">
             <strong>${escapeHtml(r.name)}</strong>
-            <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))} · ${escapeHtml(r.group || t("dash"))}</span>
+            <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))}${r.group && r.group !== t("dash") ? " · " + escapeHtml(r.group) : ""}${r.college ? " · " + escapeHtml(r.college) : ""}</span>
           </div>
           ${calls ? `<div class="attendance-calls">${calls}</div>` : ""}
           ${editable ? `<div class="inline-tools">
@@ -2003,11 +2065,15 @@ function renderFees() {
   const month = els.feeMonth.value || thisMonth;
   const monthInvoices = state.invoices.filter((invoice) => invoice.month === month);
   const monthPaid = monthInvoices.reduce((sum, invoice) => sum + invoice.paid, 0);
-  const allPaid = state.feePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-  const todayPaid = state.feePayments.filter((payment) => payment.payment_date === today).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  // Admission fees are posted as money entries, so they join every total.
+  const admissionIncome = state.money.filter((entry) => entry.type === "income" && (entry.category || "") === "Admission fee");
+  const admSum = (match) => admissionIncome.filter((entry) => match(entry.date)).reduce((sum, entry) => sum + entry.amount, 0);
+  const allPaid = state.feePayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0) + admSum(() => true);
+  const todayPaid = state.feePayments.filter((payment) => payment.payment_date === today).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) + admSum((d) => d === today);
+  const thisMonthPaid = monthPaid + admSum((d) => (d || "").slice(0, 7) === month);
   els.feeCollectTotal.textContent = formatMoney(allPaid);
   els.feeTodayCollect.textContent = formatMoney(todayPaid);
-  els.feeMonthCollect.textContent = formatMoney(monthPaid);
+  els.feeMonthCollect.textContent = formatMoney(thisMonthPaid);
   const filter = els.feeFilter.value;
   const query = els.feeSearch.value.trim().toLowerCase();
   const students = state.students.filter((student) => {
@@ -2151,7 +2217,7 @@ async function saveMonthFee(student, month, amount, paymentDate, applyDiscount, 
           });
       if (error) throw error;
       editingReceiptId = null;
-      lastReceipt = { student, month, paid: Number(data?.paid || 0), discount: Number(data?.discount || 0), remaining: Number(data?.remaining || 0), paymentDate, recordedAt: data?.recorded_at || new Date().toISOString() };
+      lastReceipt = { student, month, paid: Number(data?.paid || 0), discount: Number(data?.discount || 0), remaining: Number(data?.remaining || 0), paymentDate, recordedAt: data?.recorded_at || new Date().toISOString(), admission: admissionAmount };
     }
     if (admissionAmount > 0) {
       const { error: admissionError } = await sb.rpc("collect_student_admission", {
@@ -2191,8 +2257,8 @@ async function deleteReceipt(receiptId, student) {
 
 function openReceipt(receipt) {
   if (!receipt) return;
-  const { student, paid, discount, remaining, paymentDate, recordedAt } = receipt;
-  els.receiptPaper.innerHTML = `<header><strong>${escapeHtml(state.settings.coachingName)}</strong></header><hr><p><strong>${escapeHtml(student.name)}</strong><br><span translate="no">${escapeHtml(student.studentNumber)}</span><br>${escapeHtml(yearLabel(student.year))} · ${escapeHtml(getBatchName(student.batchId))}</p><hr><p>${escapeHtml(paymentDate || today)}<br>${new Date(recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p><hr><dl><dt>Paid</dt><dd>${formatMoney(paid)}</dd><dt>Discount</dt><dd>${formatMoney(discount)}</dd><dt>Remaining</dt><dd>${formatMoney(remaining)}</dd></dl><hr><p class="receipt-thanks">Thank you</p>`;
+  const { student, paid, discount, remaining, paymentDate, recordedAt, admission = 0 } = receipt;
+  els.receiptPaper.innerHTML = `<header><strong>${escapeHtml(state.settings.coachingName)}</strong></header><hr><p><strong>${escapeHtml(student.name)}</strong><br><span translate="no">${escapeHtml(student.studentNumber)}</span><br>${escapeHtml(yearLabel(student.year))} · ${escapeHtml(getBatchName(student.batchId))}</p><hr><p>${escapeHtml(paymentDate || today)}<br>${new Date(recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p><hr><dl><dt>Paid</dt><dd>${formatMoney(paid + admission)}</dd>${admission > 0 ? `<dt>Admission fee</dt><dd>${formatMoney(admission)}</dd>` : ""}<dt>Discount</dt><dd>${formatMoney(discount)}</dd><dt>Remaining</dt><dd>${formatMoney(remaining)}</dd></dl><hr><p class="receipt-thanks">Thank you</p>`;
   if (!els.receiptDialog.open) els.receiptDialog.showModal();
 }
 
@@ -2419,46 +2485,86 @@ function renderDues() {
 
 /* ================= payroll ================= */
 
+let payFilter = "all";
+let paySort = "due";
+
 function renderPayroll() {
-  if (!canView("payroll")) {
+  if (!hasPayrollAccess()) {
     els.payrollRows.innerHTML = "";
     els.heldSessionsList.innerHTML = "";
     return;
   }
-  const teacherIds = [...new Set([
-    ...state.users.filter((u) => u.role === "teacher").map((u) => u.id),
-    ...state.offerings.filter((o) => o.teacherId).map((o) => o.teacherId),
-  ])];
-
-  const rows = teacherIds.map((id) => {
-    const held = state.heldSessions.filter((s) => s.teacherId === id);
-    const earned = held.reduce((s, x) => s + x.rate, 0);
-    const paid = state.teacherPayments.filter((p) => p.teacherId === id).reduce((s, p) => s + p.amount, 0);
-    return { id, name: getTeacherName(id), count: held.length, earned, paid, due: Math.max(0, earned - paid) };
+  // Every assignable user appears — even with zero classes — so the full
+  // hisab is visible before anything is paid.
+  const rows = eligibleTeachers().map((u) => {
+    const held = state.heldSessions.filter((s) => s.teacherId === u.id);
+    const classEarned = held.reduce((s, x) => s + x.rate, 0);
+    const extra = state.teacherAdjustments.filter((a) => a.teacherId === u.id).reduce((s, a) => s + a.amount, 0);
+    const earned = classEarned + extra;
+    const paid = state.teacherPayments.filter((p) => p.teacherId === u.id).reduce((s, p) => s + p.amount, 0);
+    const due = Math.max(0, earned - paid);
+    const status = due <= 0 ? "paid" : paid > 0 ? "partial" : "unpaid";
+    return { id: u.id, name: u.username, count: held.length, classEarned, extra, earned, paid, due, status };
   });
 
-  els.payrollRows.innerHTML = rows.length
-    ? rows.map((r) => `
+  const counts = { all: rows.length, paid: 0, partial: 0, unpaid: 0 };
+  for (const r of rows) counts[r.status]++;
+  els.payFilterChips.innerHTML = [["all", `All (${toNum(counts.all)})`], ["unpaid", `Unpaid (${toNum(counts.unpaid)})`], ["partial", `Partial (${toNum(counts.partial)})`], ["paid", `Paid (${toNum(counts.paid)})`]]
+    .map(([value, label]) => `<button type="button" class="year-chip${payFilter === value ? " active" : ""}" data-pay-filter="${value}" aria-pressed="${payFilter === value}">${label}</button>`)
+    .join("");
+  els.payFilterChips.querySelectorAll("[data-pay-filter]").forEach((button) =>
+    button.addEventListener("click", () => { payFilter = button.dataset.payFilter; renderPayroll(); }));
+
+  const filtered = rows
+    .filter((r) => payFilter === "all" || r.status === payFilter)
+    .sort((a, b) =>
+      paySort === "name" ? a.name.localeCompare(b.name)
+      : paySort === "earned" ? b.earned - a.earned
+      : b.due - a.due || a.name.localeCompare(b.name));
+
+  const statusLabel = { paid: t("paid"), partial: "Partial", unpaid: t("dueLabel") };
+  els.payrollRows.innerHTML = filtered.length
+    ? filtered.map((r) => `
         <div class="compact-item payroll-card">
           <div>
             <strong>${escapeHtml(r.name)}</strong>
-            <span>${toNum(r.count)} ${t("classesHeld")} · ${t("earnedLabel")} ${formatMoney(r.earned)} · ${t("paidLabel")} ${formatMoney(r.paid)}</span>
+            <span>${toNum(r.count)} ${t("classesHeld")} · ${t("earnedLabel")} ${formatMoney(r.earned)}${r.extra > 0 ? ` (incl. extra ${formatMoney(r.extra)})` : ""} · ${t("paidLabel")} ${formatMoney(r.paid)}</span>
           </div>
-          <span class="badge ${r.due > 0 ? "due" : "paid"}">${t("dueLabel")} ${formatMoney(r.due)}</span>
+          <div class="payroll-side">
+            <span class="badge ${r.status === "paid" ? "paid" : r.status === "partial" ? "" : "due"}">${statusLabel[r.status]} · ${formatMoney(r.due)}</span>
+            <button type="button" class="small-btn" data-quick-pay="${r.id}">Pay</button>
+          </div>
         </div>`).join("")
     : emptyState(t("emptyPayroll"));
+  els.payrollRows.querySelectorAll("[data-quick-pay]").forEach((button) =>
+    button.addEventListener("click", () => {
+      els.payTeacher.value = button.dataset.quickPay;
+      els.payAmount.focus();
+      els.payPayPanel.scrollIntoView({ block: "center" });
+    }));
 
+  const teacherOptions = eligibleTeachers();
   const prevTeacher = els.payTeacher.value;
-  els.payTeacher.innerHTML = rows.map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join("");
-  if (rows.some((r) => r.id === prevTeacher)) els.payTeacher.value = prevTeacher;
+  els.payTeacher.innerHTML = teacherOptions.map((u) => `<option value="${u.id}">${escapeHtml(u.username)}</option>`).join("");
+  if (teacherOptions.some((u) => u.id === prevTeacher)) els.payTeacher.value = prevTeacher;
+  const prevAdjust = els.adjustTeacher.value;
+  els.adjustTeacher.innerHTML = teacherOptions.map((u) => `<option value="${u.id}">${escapeHtml(u.username)}</option>`).join("");
+  if (teacherOptions.some((u) => u.id === prevAdjust)) els.adjustTeacher.value = prevAdjust;
 
   els.heldSessionsList.innerHTML = state.heldSessions.length
     ? state.heldSessions.slice(0, 30).map((s) => `
         <div class="compact-item">
-          <div><strong>${escapeHtml(getCourseName(s.courseId))}</strong><span>${escapeHtml(s.date)} · ${escapeHtml(getTeacherName(s.teacherId))} · ${escapeHtml(yearLabel(s.year))} ${escapeHtml(s.group)}</span></div>
+          <div><strong>${escapeHtml(getCourseName(s.courseId))}</strong><span>${escapeHtml(s.date)} · ${escapeHtml(getTeacherName(s.teacherId))} · ${escapeHtml(yearLabel(s.year))}</span></div>
           <span class="badge paid">${formatMoney(s.rate)}</span>
         </div>`).join("")
     : emptyState(t("emptyHeld"));
+}
+
+els.paySortSelect.addEventListener("change", () => { paySort = els.paySortSelect.value; renderPayroll(); });
+
+function openTeacherReceipt(payment) {
+  els.receiptPaper.innerHTML = `<header><strong>${escapeHtml(state.settings.coachingName)}</strong></header><hr><p><strong>Teacher payment receipt</strong><br>${escapeHtml(payment.teacher)}</p><hr><p>${escapeHtml(payment.date)}<br>${new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</p><hr><dl><dt>Paid</dt><dd>${formatMoney(payment.amount)}</dd>${payment.note ? `<dt>Note</dt><dd>${escapeHtml(payment.note)}</dd>` : ""}</dl><hr><p class="receipt-thanks">Thank you</p>`;
+  if (!els.receiptDialog.open) els.receiptDialog.showModal();
 }
 
 els.payrollPayForm.addEventListener("submit", async (event) => {
@@ -2468,13 +2574,20 @@ els.payrollPayForm.addEventListener("submit", async (event) => {
   const amount = Number(els.payAmount.value);
   if (!teacherId) { toast(t("selectTeacher")); return; }
   if (!Number.isFinite(amount) || amount <= 0) { toast(t("msgAmtPos")); return; }
+  const note = els.payNote.value.trim();
   const row = {
     id: uuid(), teacher_id: teacherId, amount,
-    paid_by: currentUser.id, note: els.payNote.value.trim(),
+    paid_by: currentUser.id, note,
   };
   try {
     const { error } = await sb.from("teacher_payments").insert(row);
     if (error) throw error;
+    // Keep the main reports in sync: teacher payments are coaching expenses.
+    const { error: moneyError } = await sb.from("money_entries").insert({
+      date: today, type: "expense", category: "Teacher payment", amount,
+      note: `${getTeacherName(teacherId)}${note ? " — " + note : ""}`, by_username: currentUser.username,
+    });
+    if (moneyError) throw moneyError;
   } catch (err) {
     fail(err);
     return;
@@ -2482,8 +2595,33 @@ els.payrollPayForm.addEventListener("submit", async (event) => {
   els.payrollPayForm.reset();
   toast(t("tPaySaved"));
   logActivity("Teacher payment", `${getTeacherName(teacherId)} — ${formatMoney(amount)}`);
+  openTeacherReceipt({ teacher: getTeacherName(teacherId), amount, note, date: today });
   await db.loadPayroll();
   renderAll();
+});
+
+els.adjustForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!hasPayrollAccess()) { toast(t("msgAdminOnly")); return; }
+  const teacherId = els.adjustTeacher.value;
+  const amount = Number(els.adjustAmount.value);
+  if (!teacherId) { toast(t("selectTeacher")); return; }
+  if (!Number.isFinite(amount) || amount <= 0) { toast(t("msgAmtPos")); return; }
+  const note = els.adjustNote.value.trim();
+  try {
+    const { error } = await sb.from("teacher_adjustments").insert({
+      teacher_id: teacherId, amount, note, created_by: currentUser.id,
+    });
+    if (error) throw error;
+  } catch (err) {
+    fail(err);
+    return;
+  }
+  els.adjustForm.reset();
+  toast(`Extra ${formatMoney(amount)} added for ${getTeacherName(teacherId)}.`);
+  logActivity("Teacher extra", `${getTeacherName(teacherId)} — ${formatMoney(amount)}${note ? " (" + note + ")" : ""}`);
+  await db.loadPayroll();
+  renderPayroll();
 });
 
 /* ================= settings ================= */
@@ -2656,81 +2794,45 @@ async function edgeErrorMessage(error) {
   }
 }
 
-// The edge function can be unreachable for reasons other than a clean 404: when
-// it is not deployed, Supabase's gateway CORS reply omits headers the browser
-// needs, so the preflight fails and supabase-js throws a FunctionsFetchError
-// ("Failed to send a request to the Edge Function") whose body is unreadable.
-// Treat all of those as "not deployed" so the browser fallback can take over.
-function isEdgeUnavailable(error, real) {
-  const name = String(error?.name || "");
-  const message = String(error?.message || "");
-  return (
-    name === "FunctionsFetchError" ||
-    /failed to send a request to the edge function/i.test(message) ||
-    /failed to fetch|load failed|networkerror/i.test(message) ||
-    /not found/i.test(real || "")
-  );
+async function edgeErrorMessage(error) {
+  try {
+    const body = await error?.context?.json();
+    return body?.error || body?.message || "";
+  } catch {
+    return "";
+  }
 }
 
-async function createUserViaEdge(email, password, profile) {
-  let data = null;
-  let error = null;
-  try {
-    ({ data, error } = await sb.functions.invoke("admin-users", {
-      body: { action: "create", email, password, profile },
-    }));
-  } catch (err) {
-    error = err;
-  }
-  if (error) {
-    const real = await edgeErrorMessage(error);
-    // The Auth account already exists from an earlier half-created attempt:
-    // attach a profile to it (and confirm the email) instead of failing.
-    if (/already|exists|duplicate|been taken/i.test(real)) {
-      try {
-        ({ data, error } = await sb.functions.invoke("admin-users", {
-          body: { action: "attach", email, password, profile },
-        }));
-      } catch (err) {
-        error = err;
-      }
-      if (error) {
-        const attachReal = await edgeErrorMessage(error);
-        if (isEdgeUnavailable(error, attachReal)) return { skipped: true };
-        throw new Error(attachReal || error.message);
-      }
-      return { id: data?.id, attached: true };
-    }
-    if (isEdgeUnavailable(error, real)) return { skipped: true };
-    throw new Error(real || error.message);
-  }
+async function createUserViaRpc(email, password, profile) {
+  const { data, error } = await sb.rpc("admin_create_user", {
+    p_username: profile.username,
+    p_email: email,
+    p_password: password,
+    p_role: profile.role,
+    p_tabs: profile.tabs,
+    p_money_edit: !!profile.money_edit,
+    p_field_grants: profile.student_field_grants || [],
+    p_payroll_access: !!profile.teacher_payroll_access,
+    p_student_id: profile.student_id || null,
+  });
+  if (error) throw error;
   return { id: data?.id };
 }
 
-async function createUserFallback(email, password, profile) {
-  const { data: sessionData } = await sb.auth.getSession();
-  const savedSession = sessionData?.session || null;
-  const { data: signUpData, error: signUpErr } = await sb.auth.signUp({ email, password });
-  if (signUpErr) throw signUpErr;
-  const newId = signUpData?.user?.id;
-  const identities = signUpData?.user?.identities;
-  // Supabase returns an obfuscated user with no identities when the email is
-  // already registered, so a missing id alone is not enough to detect this.
-  if (!newId || (Array.isArray(identities) && identities.length === 0)) {
-    throw new Error("This email already has an account. Deploy the admin-users Edge Function (DEPLOY.md), then create the user again with the same details — the app will attach a profile to the existing account and confirm it.");
-  }
-  // With email confirmation off, signUp returns a session and swaps the client
-  // to the new user. Restore the admin's session first, otherwise the profile
-  // insert below runs as the new user and is blocked by the admin-only RLS policy.
-  if (savedSession) await sb.auth.setSession(savedSession);
-  const { error: profErr } = await sb.from("profiles").insert({
-    id: newId, username: profile.username, role: profile.role, tabs: profile.tabs,
-    money_edit: !!profile.money_edit, student_field_grants: profile.student_field_grants || [],
-    teacher_payroll_access: !!profile.teacher_payroll_access,
-    student_id: profile.student_id || null,
+async function attachUserViaRpc(email, password, profile) {
+  const { data, error } = await sb.rpc("admin_attach_user", {
+    p_email: email,
+    p_password: password,
+    p_username: profile.username,
+    p_role: profile.role,
+    p_tabs: profile.tabs,
+    p_money_edit: !!profile.money_edit,
+    p_field_grants: profile.student_field_grants || [],
+    p_payroll_access: !!profile.teacher_payroll_access,
+    p_student_id: profile.student_id || null,
   });
-  if (profErr) throw profErr;
-  return { id: newId, needsConfirm: !signUpData.session };
+  if (error) throw error;
+  return { id: data?.id, attached: true };
 }
 
 function showUserFormError(message) {
@@ -2787,50 +2889,25 @@ els.userForm.addEventListener("submit", async (event) => {
       if (state.users.some((u) => u.username === username)) { toast(t("msgUserExists")); return; }
       // Supabase Auth rejects passwords under 6 characters.
       if (!pass || pass.length < 6) { toast("Password must be at least 6 characters."); els.userPass.focus(); return; }
-      let result = await createUserViaEdge(email, pass, profile);
-      if (result.skipped) {
-        console.warn("admin-users edge function not deployed; using browser signUp fallback");
-        try {
-          result = await createUserFallback(email, pass, profile);
-        } catch (fallbackErr) {
-          throw new Error(`${fallbackErr.message} (Deploy the admin-users function for reliable user creation — see DEPLOY.md.)`);
-        }
+      let result;
+      try {
+        result = await createUserViaRpc(email, pass, profile);
+      } catch (err) {
+        // An account with this email already exists (e.g. an earlier failed
+        // attempt): attach a profile to it, confirm it, and set the password.
+        if (!/already exists/i.test(err.message)) throw err;
+        result = await attachUserViaRpc(email, pass, profile);
       }
-      // Verify by username (unique) so a malformed id can never reach a uuid
-      // column; a missing profile means the account cannot be listed or used.
-      const verifyProfile = () => sb.from("profiles").select("id, username").eq("username", username).maybeSingle();
-      let { data: createdProfile, error: verifyErr } = await verifyProfile();
+      // Verify the profile row really exists before claiming success; without
+      // it the user never appears in the list and permissions do not resolve.
+      const { data: createdProfile, error: verifyErr } = await sb.from("profiles").select("id, username").eq("username", username).maybeSingle();
       if (verifyErr) throw verifyErr;
-      let attached = !!result.attached;
       if (!createdProfile) {
-        // The Auth account exists without a profile (e.g. an earlier failed
-        // attempt). Ask the edge function to attach + confirm it right now.
-        let attachError = null;
-        try {
-          ({ error: attachError } = await sb.functions.invoke("admin-users", {
-            body: { action: "attach", email, password: pass, profile },
-          }));
-        } catch (err) { attachError = err; }
-        if (!attachError) {
-          ({ data: createdProfile } = await verifyProfile());
-          attached = !!createdProfile;
-        }
-        if (!createdProfile) {
-          const real = attachError ? await edgeErrorMessage(attachError) : "";
-          const { data: anyProfile } = await sb.from("profiles").select("id").limit(1);
-          const visibility = anyProfile && anyProfile.length
-            ? "your session sees other profiles, but this insert is not landing"
-            : "your session cannot see any profile rows (RLS/role issue)";
-          throw new Error(`Profile for "${username}" still missing after attach (${real || attachError?.message || "attach unavailable — the admin-users Edge Function is not deployed"}). Your session sees: ${visibility}. Deploy the function (DEPLOY.md), reload, and create again.`);
-        }
+        throw new Error(`Account created in Auth, but the profile row for "${username}" is missing — reload the page and try again.`);
       }
-      if (result.needsConfirm && !attached) {
-        // Browser signUp cannot confirm emails; block login until confirmed.
-        showUserFormError(`"${username}" was created, but email confirmation is ON in Supabase, so login fails with "Email not confirmed" until confirmed. Fix: Supabase > Authentication > Sign In / Providers > turn Confirm email OFF, or confirm the user under Authentication > Users. Deploying the admin-users function auto-confirms new users.`);
-        toast("User created, but email must be confirmed before login.");
-      } else {
-        toast(`"${username}" ${attached ? "attached and confirmed — login now" : t("tUserAdd")}`);
-      }
+      toast(result.attached
+        ? `"${username}" attached and confirmed — login now`
+        : `"${username}" ${t("tUserAdd")}`);
       logActivity("Create user", `${username} — ${roleLabel(role)}`);
     }
   } catch (err) {
@@ -2932,28 +3009,13 @@ function renderUsers() {
       if (!user || user.id === currentUser.id) return;
       if (!confirmDelete(`"${user.username}" ${t("confirmDeleteUser")}`)) return;
       try {
-        let edgeErr = null;
-        try {
-          ({ error: edgeErr } = await sb.functions.invoke("admin-users", { body: { action: "delete", id: user.id } }));
-        } catch (err) {
-          edgeErr = err;
-        }
-        if (edgeErr) {
-          const real = await edgeErrorMessage(edgeErr);
-          if (isEdgeUnavailable(edgeErr, real)) {
-            const { error: delErr } = await sb.from("profiles").delete().eq("id", user.id);
-            if (delErr) throw delErr;
-            toast(t("msgUserDeleted"));
-          } else {
-            throw new Error(real || edgeErr.message);
-          }
-        } else {
-          toast(t("msgUserDeleted"));
-        }
+        const { error } = await sb.rpc("admin_delete_user", { p_target: user.id });
+        if (error) throw error;
       } catch (err) {
         fail(err);
         return;
       }
+      toast(t("msgUserDeleted"));
       logActivity("Delete user", user.username);
       await db.loadAdmin();
       await db.loadCore();
@@ -3273,7 +3335,10 @@ function renderReminders() {
       reminders.push({ student, kind: "Fee due", amount: due, daily: true });
     }
   }
-  const visible = reminders.filter((item) => !dismissed.has(`${item.student.id}|${item.kind}`));
+  // Birthdays always come first, then payment reminders.
+  const visible = reminders
+    .filter((item) => !dismissed.has(`${item.student.id}|${item.kind}`))
+    .sort((a, b) => (a.kind === "Birthday" ? 0 : 1) - (b.kind === "Birthday" ? 0 : 1));
   els.reminderRows.innerHTML = visible.length ? visible.map((item) => {
     const key = `${item.student.id}|${item.kind}`;
     const amountLine = item.amount > 0 ? `<span class="badge due">${t("due")} ${formatMoney(item.amount)}</span>` : "";

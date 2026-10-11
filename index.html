@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Medha Coaching Center Manager</title>
-    <link rel="stylesheet" href="./styles.css?v=9" />
+    <link rel="stylesheet" href="./styles.css?v=10" />
   </head>
   <body>
     <div id="loginView" class="login-wrap" hidden>
@@ -267,6 +267,7 @@
                 <span class="sr-only">Filter by subject or package</span>
                 <select id="studentSubjectFilter" aria-label="Filter by subject or package"></select>
               </label>
+              <div id="studentYearTabs" class="year-chips" role="group" aria-label="Filter students by year"></div>
               <div id="studentExtraFilters" class="inline-tools filter-tools" hidden>
                 <select id="studentCollegeFilter" aria-label="Filter by college"></select>
                 <select id="studentYearFilter" aria-label="Filter by year"></select>
@@ -288,6 +289,7 @@
                 </div>
                 <p id="studentIdDisplay" class="student-id-display" hidden></p>
                 <label><span>Name *</span><input id="studentName" type="text" placeholder="e.g. Farhan Ahmed" required maxlength="80" /></label>
+                <p id="studentDupWarning" class="dup-warning" role="status" hidden></p>
                 <div class="form-row">
                   <label><span>Gender</span><select id="studentGender"><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
                   <label><span>Birthday</span><input id="studentBirthday" type="date" /></label>
@@ -378,7 +380,7 @@
 
           <section id="schedule" class="view">
             <section class="panel" id="offeringsPanel">
-              <div class="panel-header"><h3 data-i18n="scheduleTitle">Weekly schedule (course + year + group)</h3></div>
+              <div class="panel-header"><h3 data-i18n="scheduleTitle">Weekly schedule (subject + year)</h3></div>
               <form id="offeringForm" class="offering-form">
                 <div class="form-row">
                   <label>
@@ -386,23 +388,17 @@
                     <select id="offeringCourse" required></select>
                   </label>
                   <label>
-                    <span data-i18n="assignTeacher">Teacher</span>
-                    <select id="offeringTeacher"></select>
-                  </label>
-                </div>
-                <div class="form-row">
-                  <label>
                     <span data-i18n="yearLevel">Year *</span>
                     <select id="offeringYear" required>
                       <option value="1st year" data-i18n="year1">1st year</option>
                       <option value="2nd year" data-i18n="year2">2nd year</option>
                     </select>
                   </label>
-                  <label>
-                    <span data-i18n="groupLabel">Group *</span>
-                    <select id="offeringGroup" required></select>
-                  </label>
                 </div>
+                <label>
+                  <span data-i18n="assignTeacher">Teacher</span>
+                  <select id="offeringTeacher"></select>
+                </label>
                 <label>
                   <span data-i18n="weekdays">Class days *</span>
                   <div id="offeringDaysBox" class="check-grid days-grid"></div>
@@ -610,7 +606,17 @@
           <!-- ============ TEACHER PAY ============ -->
           <section id="payroll" class="view">
             <section class="panel">
-              <div class="panel-header"><h3 data-i18n="payrollTitle">শিক্ষক পেমেন্ট (প্রতি ক্লাস হিসাব)</h3></div>
+              <div class="panel-header">
+                <h3 data-i18n="payrollTitle">শিক্ষক পেমেন্ট (প্রতি ক্লাস হিসাব)</h3>
+                <div class="inline-tools payroll-tools">
+                  <select id="paySortSelect" aria-label="Sort teachers">
+                    <option value="due">Sort: most due</option>
+                    <option value="earned">Sort: most earned</option>
+                    <option value="name">Sort: name</option>
+                  </select>
+                  <div id="payFilterChips" class="year-chips" role="group" aria-label="Filter by payment status"></div>
+                </div>
+              </div>
               <div id="payrollRows" class="compact-list"></div>
             </section>
             <section class="panel panel-gap" id="payPayPanel">
@@ -629,6 +635,24 @@
                   <input id="payNote" type="text" maxlength="140" />
                 </label>
                 <button class="primary-btn" type="submit" data-i18n="payTeacherBtn">পেমেন্ট সেভ করো</button>
+              </form>
+            </section>
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3>Extra earnings (bonus, bus, extra class)</h3></div>
+              <form id="adjustForm" class="pay-form">
+                <label>
+                  <span>শিক্ষক *</span>
+                  <select id="adjustTeacher" required></select>
+                </label>
+                <label>
+                  <span>টাকার পরিমাণ *</span>
+                  <input id="adjustAmount" type="number" min="1" step="1" required />
+                </label>
+                <label>
+                  <span>কারণ</span>
+                  <input id="adjustNote" type="text" maxlength="120" placeholder="যেমন: বাস ভাড়া, বোনাস" />
+                </label>
+                <button class="secondary-btn" type="submit">Add extra</button>
               </form>
             </section>
             <section class="panel panel-gap">
@@ -803,6 +827,6 @@
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-    <script src="./app.js?v=14"></script>
+    <script src="./app.js?v=15"></script>
   </body>
 </html>

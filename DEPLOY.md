@@ -30,9 +30,14 @@ same live database e thake. localStorage ar nei.
    month's fee (auto income entry, confirmation in the collect dialog).
    Existing recorded admissions reset to pending, and the unused duplicate
    subject "HSC Physics" is removed (Physics stays).
-9. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
-   off if users should be created without email confirmation.
-10. Create the owner account in **Authentication > Users > Add user** and copy
+9. Run `supabase/20261013_admin_user_rpc.sql` — user create/attach/delete
+   happen through super-admin RPCs (no edge function dependency).
+10. Run `supabase/20261014_schedule_teacher_pay.sql` — schedules become
+    subject + year (all groups attend together), and Teachers Pay gains a
+    teacher_adjustments ledger (bonus/bus/extra) with payment-status filters.
+11. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+    off if users should be created without email confirmation.
+12. Create the owner account in **Authentication > Users > Add user** and copy
     its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -42,7 +47,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-11. Onno user ra ekhon **Settings > User management** thekei banano jabe
+13. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function

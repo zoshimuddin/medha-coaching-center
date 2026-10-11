@@ -20,7 +20,9 @@ const CORS = {
 const PROMPT_TEMPLATE = `Extract student details from this scanned admission-form photo of a Bengali coaching center ("মেধা").
 
 Form structure:
-- Section "শিক্ষার্থীর তথ্য" (lined blanks): শিক্ষার্থীর নাম = student name, পিতার নাম = father/guardian name, স্কুল/মাদ্রাসার নাম = school or madrasa name, WhatsApp নম্বর, বর্তমান ঠিকানা = present address.
+- Section "শিক্ষার্থীর তথ্য" (lined blanks): শিক্ষার্থীর নাম = student name, পিতার নাম = father/guardian name, WhatsApp নম্বর, বর্তমান ঠিকানা = present address.
+- স্কুল/মাদ্রাসার নাম (school/madrasa name): copy it EXACTLY from this allowed list — if none matches what is written, return "":
+<<COLLEGES>>
 - Section "একাডেমিক তথ্য": checkbox HSC 2028 means "1st year"; checkbox HSC 2027 means "2nd year". Group checkboxes: Science, Commerce, Arts, Madrasa.
 - Course/election sections: printed checkboxes for packages (e.g. Science Full Package, Commerce Full Package, Arts/Madrasa/General Package) and individual subjects (ফিজিক্স/Physics, রসায়ন/Chemistry, ICT, উচ্চতর গণিত/Higher Math, জীববিজ্ঞান/Biology, ইংরেজি/English, বাংলা/Bangla etc.). Only CHECKED boxes matter.
 
@@ -78,7 +80,12 @@ Deno.serve(async (req) => {
     .map((c: Record<string, unknown>) => `- ${(c.id as string) ?? ""}: ${(c.name as string) ?? ""}`)
     .filter((line: string) => line.trim().endsWith(":") === false && line.includes(": "))
     .join("\n");
-  const prompt = PROMPT_TEMPLATE.replace("<<COURSES>>", courseList || "(list empty — return courseId \"\" for all)");
+  const colleges = Array.isArray(body.colleges)
+    ? (body.colleges as unknown[]).map((c) => `- ${String(c)}`).join("\n")
+    : "";
+  const prompt = PROMPT_TEMPLATE
+    .replace("<<COURSES>>", courseList || "(list empty — return courseId \"\" for all)")
+    .replace("<<COLLEGES>>", colleges || "(list unavailable — return \"\")");
 
   // Fast + free-tier friendly first; fall back automatically if a model is
   // unavailable on this project's quota/region. Override with GEMINI_MODEL.
