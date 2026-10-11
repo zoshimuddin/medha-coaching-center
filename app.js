@@ -505,10 +505,11 @@ const db = {
       canMoney ? safe(sb.from("dues").select("*").order("created_at", { ascending: false })) : [],
       canMoney ? safe(sb.from("bank_account").select("*").eq("id", true).maybeSingle()) : null,
       canMoney ? safe(sb.from("bank_transactions").select("*").order("transaction_date", { ascending: false }).limit(200)) : [],
-      canFees ? safe(sb.from("admission_payments").select("student_id, required_amount, amount_paid")) : [],
+      canFees ? safe(sb.from("admission_payments").select("student_id, required_amount, amount_paid, paid_at")) : [],
     ]);
     state.admissions = (Array.isArray(admissionRows) ? admissionRows : []).map((r) => ({
       studentId: r.student_id, required: Number(r.required_amount || 0), paid: Number(r.amount_paid || 0),
+      paidAt: r.paid_at || "",
     }));
     state.feePayments = paymentRows || [];
     state.feeDiscounts = discountRows || [];
@@ -2114,12 +2115,16 @@ async function openFeeDetail(studentId, push = true) {
   const editing = editingReceiptId ? history.find((item) => item.receiptId === editingReceiptId && item.kind !== "legacy") : null;
   const editBase = due + (editing ? Number(editing.paid || 0) + Number(editing.discount || 0) : 0);
   const courses = invoices.map((invoice) => `<div class="fee-course-row"><span>${escapeHtml(getCourseName(invoice.courseId))}</span><span>${formatMoney(invoice.agreedFee)}</span></div>`).join("");
-  // Admission fee pending for this student shows once, with the first month.
+  // Admission fee: pending joins the first-month total; once deposited it is
+  // shown as a record line with its own printable receipt.
   const admission = state.admissions.find((a) => a.studentId === studentId);
+  const requiredAdmission = admission ? admission.required : 0;
   const pendingAdmission = admission ? Math.max(0, admission.required - admission.paid) : 0;
-  const admissionRow = pendingAdmission > 0
-    ? `<div class="fee-course-row fee-course-admission"><span>Admission fee (first month)</span><span>${formatMoney(pendingAdmission)}</span></div>`
-    : "";
+  const admissionRow = requiredAdmission <= 0
+    ? ""
+    : pendingAdmission > 0
+      ? `<div class="fee-course-row fee-course-admission"><span>Admission fee (first month)</span><span>${formatMoney(pendingAdmission)}</span></div>`
+      : `<div class="fee-course-row fee-course-admission done"><span>Admission fee — ভর্তি ফি জমা হয়েছে${admission.paidAt ? " · " + escapeHtml(String(admission.paidAt).slice(0, 10)) : ""}</span><span>${formatMoney(requiredAdmission)} <button type="button" class="small-btn" data-print-admission="${studentId}">Print</button></span></div>`;
   const totalDue = due + pendingAdmission;
   const historyHtml = history.length ? history.map((item) => {
     const title = item.kind === "legacy" ? "Legacy payment" : Number(item.paid) > 0 ? `Paid ${formatMoney(item.paid)}` : "Discount";
@@ -2145,6 +2150,8 @@ async function openFeeDetail(studentId, push = true) {
   els.feeDetailPage.hidden = false;
   if (shouldPush) pushDetailState({ ccm: "fee-detail", studentId, view: currentRoute });
   els.feeDetailBody.querySelectorAll("[data-print-history]").forEach((button) => button.addEventListener("click", () => printExistingReceipt(button.dataset.printHistory, student, history)));
+  els.feeDetailBody.querySelectorAll("[data-print-admission]").forEach((button) =>
+    button.addEventListener("click", () => openAdmissionReceipt(student, requiredAdmission, admission ? admission.paidAt : "")));
   els.feeDetailBody.querySelectorAll("[data-edit-receipt]").forEach((button) => button.addEventListener("click", () => {
     editingReceiptId = button.dataset.editReceipt;
     openFeeDetail(studentId);
@@ -2253,6 +2260,12 @@ async function deleteReceipt(receiptId, student) {
   await db.loadFinance();
   renderAll();
   await openFeeDetail(student.id);
+}
+
+function openAdmissionReceipt(student, amount, paidAt) {
+  const dateLabel = paidAt ? String(paidAt).slice(0, 10) : today;
+  els.receiptPaper.innerHTML = `<header><strong>${escapeHtml(state.settings.coachingName)}</strong></header><hr><p><strong>Admission fee receipt</strong><br>${escapeHtml(student.name)}<br><span translate="no">${escapeHtml(student.studentNumber)}</span><br>${escapeHtml(yearLabel(student.year))} · ${escapeHtml(getBatchName(student.batchId))}</p><hr><p>${escapeHtml(dateLabel)}</p><hr><dl><dt>Admission fee</dt><dd>${formatMoney(amount)}</dd><dt>Status</dt><dd>ভর্তি ফি জমা হয়েছে</dd></dl><hr><p class="receipt-thanks">Thank you</p>`;
+  if (!els.receiptDialog.open) els.receiptDialog.showModal();
 }
 
 function openReceipt(receipt) {

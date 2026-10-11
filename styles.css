@@ -2720,6 +2720,9 @@ input[readonly] { background: #eef2f7; color: var(--muted); }
   font-weight: 700;
 }
 
+.fee-course-admission.done { color: #21703a; }
+.fee-course-admission.done .small-btn { margin-left: 6px; }
+
 .bar-row {
   display: grid;
   grid-template-columns: minmax(90px, 38%) 1fr auto;
