@@ -1276,11 +1276,11 @@ els.studentForm.addEventListener("submit", async (event) => {
   // Review gate: the admin confirms the full student summary before saving.
   if (!editingStudentId) {
     const dupNote = checkStudentDuplicates() ? "\nWARNING: this name/mobile matches an existing student." : "";
-    const summary = `Review before adding:\nName: ${name}\nMobile: ${phone}\n${els.studentCollege.value} · ${els.studentYear.value} · ${els.studentGroup.value}\nCourses: ${enrollments.map((e) => `${getCourseName(e.course_id)} ৳${toNum(e.fee)}`).join(", ") || "-"}\nAdmission fee ৳${toNum(state.settings.admissionFee)} (with first month)${dupNote}`;
+    const summary = `Review before adding:\nName: ${name}\nMobile: ${phone}\n${els.studentCollege.value} · ${els.studentYear.value} · ${els.studentGroup.value}\nCourses: ${enrollments.map((e) => `${getCourseName(e.course_id)} ৳${toNum(e.fee)}`).join(", ") || "-"}\nAdmission fee ৳${toNum(state.settings.admissionFee)} (collected now, shows in collection and reports)${dupNote}`;
     if (!confirm(summary)) return;
   }
-  // Admission is not collected here anymore — it rides with the first month's
-  // fee collection and is recorded by collect_student_admission.
+  // The admission fee is deposited here: save_student_with_admission stores
+  // the admission fully paid and generates its own receipt and income entry.
   const admissionPaid = 0;
 
   const pStudent = {
@@ -1963,6 +1963,8 @@ function renderRoster(roster) {
   const editable = isManager() || (canMarkOffering(offering) && date === today);
   els.attendanceActions.style.display = editable ? "" : "none";
   els.rosterPanel.dataset.roster = JSON.stringify(roster);
+  els.rosterCountBadge.hidden = roster.length === 0;
+  els.rosterCountBadge.textContent = `${roster.length} students`;
   els.attendanceRoster.innerHTML = roster.length
     ? roster.map((r) => {
         const status = activeSession.marks.get(r.id) || "";
@@ -1971,18 +1973,22 @@ function renderRoster(roster) {
           r.guardian_phone ? `<a class="contact-link guardian" href="tel:${escapeHtml(r.guardian_phone)}" aria-label="Call guardian of ${escapeHtml(r.name)}">${SVG_ICONS.family}</a>` : "",
         ].filter(Boolean).join("");
         return `
-        <div class="attendance-row">
-          <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
-          <div class="attendance-copy">
-            <strong>${escapeHtml(r.name)}</strong>
-            <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))}${r.group && r.group !== t("dash") ? " · " + escapeHtml(r.group) : ""}${r.college ? " · " + escapeHtml(r.college) : ""}</span>
+        <article class="attendance-row">
+          <div class="student-card-main">
+            <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
+            <div class="student-card-copy">
+              <strong>${escapeHtml(r.name)}</strong>
+              <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))}${r.group && r.group !== t("dash") ? " · " + escapeHtml(r.group) : ""}${r.college ? " · " + escapeHtml(r.college) : ""}</span>
+              ${r.phone ? `<span translate="no">${escapeHtml(r.phone)}</span>` : ""}
+              ${r.address ? `<span>${escapeHtml(r.address)}</span>` : ""}
+            </div>
+            ${calls ? `<div class="attendance-calls">${calls}</div>` : ""}
+            ${editable ? `<div class="inline-tools">
+              <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
+              <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
+            </div>` : `<span class="badge ${status === "present" ? "paid" : status === "absent" ? "due" : ""}">${status === "present" ? t("present") : status === "absent" ? t("absent") : t("notMarked")}</span>`}
           </div>
-          ${calls ? `<div class="attendance-calls">${calls}</div>` : ""}
-          ${editable ? `<div class="inline-tools">
-            <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
-            <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
-          </div>` : `<span class="badge ${status === "present" ? "paid" : status === "absent" ? "due" : ""}">${status === "present" ? t("present") : status === "absent" ? t("absent") : t("notMarked")}</span>`}
-        </div>`;
+        </article>`;
       }).join("")
     : emptyState(t("emptyRoster"));
 
@@ -2115,18 +2121,21 @@ async function openFeeDetail(studentId, push = true) {
   const editing = editingReceiptId ? history.find((item) => item.receiptId === editingReceiptId && item.kind !== "legacy") : null;
   const editBase = due + (editing ? Number(editing.paid || 0) + Number(editing.discount || 0) : 0);
   const courses = invoices.map((invoice) => `<div class="fee-course-row"><span>${escapeHtml(getCourseName(invoice.courseId))}</span><span>${formatMoney(invoice.agreedFee)}</span></div>`).join("");
-  // Admission fee: pending joins the first-month total; once deposited it is
-  // shown as a record line with its own printable receipt.
+  // Admission fee: only a rare pending deposit joins the first-month total
+  // until it is deposited; a collected admission shows in the history below.
   const admission = state.admissions.find((a) => a.studentId === studentId);
-  const requiredAdmission = admission ? admission.required : 0;
   const pendingAdmission = admission ? Math.max(0, admission.required - admission.paid) : 0;
-  const admissionRow = requiredAdmission <= 0
+  // The admission fee is collected at admission, so it shows as its own item
+  // in collection history below; only a rare pending deposit keeps its row.
+  const admissionRow = pendingAdmission <= 0
     ? ""
-    : pendingAdmission > 0
-      ? `<div class="fee-course-row fee-course-admission"><span>Admission fee (first month)</span><span>${formatMoney(pendingAdmission)}</span></div>`
-      : `<div class="fee-course-row fee-course-admission done"><span>Admission fee — ভর্তি ফি জমা হয়েছে${admission.paidAt ? " · " + escapeHtml(String(admission.paidAt).slice(0, 10)) : ""}</span><span>${formatMoney(requiredAdmission)} <button type="button" class="small-btn" data-print-admission="${studentId}">Print</button></span></div>`;
+    : `<div class="fee-course-row fee-course-admission"><span>Admission fee (first month)</span><span>${formatMoney(pendingAdmission)}</span></div>`;
   const totalDue = due + pendingAdmission;
   const historyHtml = history.length ? history.map((item) => {
+    if (item.kind === "admission") {
+      const admissionTools = isAdmin() ? `<div class="receipt-tools"><button type="button" class="small-btn" data-delete-receipt="${escapeHtml(item.receiptId)}">Delete</button></div>` : "";
+      return `<article class="fee-history-item fee-history-admission"><div><strong>Admission fee (ভর্তি ফি) — Paid ${formatMoney(item.paid)}</strong><span>Remaining — · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div>${admissionTools}<button type="button" class="small-btn" data-print-admission-history="${escapeHtml(item.receiptId)}">Print</button></article>`;
+    }
     const title = item.kind === "legacy" ? "Legacy payment" : Number(item.paid) > 0 ? `Paid ${formatMoney(item.paid)}` : "Discount";
     const disc = Number(item.discount) > 0 ? ` · Disc ${formatMoney(item.discount)}` : "";
     const remaining = item.remaining == null ? "Not available" : formatMoney(item.remaining);
@@ -2150,8 +2159,11 @@ async function openFeeDetail(studentId, push = true) {
   els.feeDetailPage.hidden = false;
   if (shouldPush) pushDetailState({ ccm: "fee-detail", studentId, view: currentRoute });
   els.feeDetailBody.querySelectorAll("[data-print-history]").forEach((button) => button.addEventListener("click", () => printExistingReceipt(button.dataset.printHistory, student, history)));
-  els.feeDetailBody.querySelectorAll("[data-print-admission]").forEach((button) =>
-    button.addEventListener("click", () => openAdmissionReceipt(student, requiredAdmission, admission ? admission.paidAt : "")));
+  els.feeDetailBody.querySelectorAll("[data-print-admission-history]").forEach((button) => button.addEventListener("click", () => {
+    const item = history.find((record) => record.receiptId === button.dataset.printAdmissionHistory);
+    if (!item) return;
+    openAdmissionReceipt(student, Number(item.paid || 0), item.paymentDate || (admission ? admission.paidAt : ""));
+  }));
   els.feeDetailBody.querySelectorAll("[data-edit-receipt]").forEach((button) => button.addEventListener("click", () => {
     editingReceiptId = button.dataset.editReceipt;
     openFeeDetail(studentId);
@@ -3299,7 +3311,17 @@ els.importFileInput.addEventListener("change", () => {
       await push("students", students);
       await push("enrollments", enrollments);
       await push("student_fee_invoices", invoices);
-      await push("admission_payments", admissions);
+      await push("admission_payments", admissions.map((a) => ({ ...a, amount_paid: 0 })));
+      // Admission fee is deposited at import time: collect it per student so
+      // each gets an admission receipt and a matching income entry.
+      if (admission > 0) {
+        for (const s of students) {
+          const { error: admError } = await sb.rpc("collect_student_admission", {
+            p_student: s.id, p_amount: admission, p_payment_date: today,
+          });
+          if (admError) throw admError;
+        }
+      }
       await push("money_entries", money);
       await push("dues", dues);
     } catch (err) {
@@ -3447,9 +3469,17 @@ const inRange = (value, range) => {
 function renderReports() {
   if (!isManager()) return;
   const range = reportRange();
-  const moneyIncome = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "income").reduce((sum, entry) => sum + entry.amount, 0);
+  // Admission collects below join the cash side, so drop them here
+  // (income = other money income − posted fee rows + all cash collected).
+  const moneyIncome = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "income" && (entry.category || "") !== "Admission fee").reduce((sum, entry) => sum + entry.amount, 0);
   const expense = state.money.filter((entry) => inRange(entry.date, range) && entry.type === "expense").reduce((sum, entry) => sum + entry.amount, 0);
-  const cash = state.feePayments.filter((payment) => inRange(payment.payment_date || payment.paid_at?.slice(0, 10), range)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const feeCash = state.feePayments.filter((payment) => inRange(payment.payment_date || payment.paid_at?.slice(0, 10), range)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  // Admission fees are collected on the admission date and posted as their own
+  // money entries, so "Fee collected" joins them with the monthly collections.
+  const admissionCash = state.money
+    .filter((entry) => inRange(entry.date, range) && entry.type === "income" && (entry.category || "") === "Admission fee")
+    .reduce((sum, entry) => sum + entry.amount, 0);
+  const cash = feeCash + admissionCash;
   // Fee collection is income everywhere. When the database already posts a
   // "Student fee" row per receipt, drop it here and add the raw payments so
   // the total never double counts whether or not that trigger is deployed.

@@ -35,9 +35,15 @@ same live database e thake. localStorage ar nei.
 10. Run `supabase/20261014_schedule_teacher_pay.sql` — schedules become
     subject + year (all groups attend together), and Teachers Pay gains a
     teacher_adjustments ledger (bonus/bus/extra) with payment-status filters.
-11. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+11. Run `supabase/20261017_admission_instant_receipts.sql` — the admission fee
+    is deposited the moment a student is admitted: it gets its own receipt in
+    Collection history and its income entry is dated the admission date, so
+    reports count it on that day (2 admissions today = ৳1000). All students
+    admitted before this migration are back-filled with their admission
+    receipt. Deleting an admission receipt undoes that deposit.
+12. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
     off if users should be created without email confirmation.
-12. Create the owner account in **Authentication > Users > Add user** and copy
+13. Create the owner account in **Authentication > Users > Add user** and copy
     its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -47,7 +53,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-13. Onno user ra ekhon **Settings > User management** thekei banano jabe
+14. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function

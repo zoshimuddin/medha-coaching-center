@@ -291,7 +291,7 @@
                 <label><span>Name *</span><input id="studentName" type="text" placeholder="e.g. Farhan Ahmed" required maxlength="80" /></label>
                 <p id="studentDupWarning" class="dup-warning" role="status" hidden></p>
                 <div class="form-row">
-                  <label><span>Gender</span><select id="studentGender"><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option><option value="other">Other</option><option value="prefer_not_to_say">Prefer not to say</option></select></label>
+                  <label><span>Gender</span><select id="studentGender"><option value="">Select gender</option><option value="female">Female</option><option value="male">Male</option></select></label>
                   <label><span>Birthday</span><input id="studentBirthday" type="date" /></label>
                 </div>
                 <div class="form-row">
@@ -318,7 +318,7 @@
                   <div id="studentCoursesBox" class="course-pick-box"></div>
                 </section>
                 <p id="scanStatus" class="scan-status" role="status" hidden></p>
-                <div class="admission-box"><p class="admission-note">Admission fee (fixed in Settings): <strong id="admissionFeeNote">৳0</strong> — collected together with the first month's fee</p><label><span>Admission fee (auto, pending)</span><input id="admissionPaid" type="number" min="0" step="1" readonly /></label></div>
+                <div class="admission-box"><p class="admission-note">Admission fee (fixed in Settings): <strong id="admissionFeeNote">৳0</strong> — collected at admission; it will show in collection and reports</p><label><span>Admission fee (auto)</span><input id="admissionPaid" type="number" min="0" step="1" readonly /></label></div>
                 <div class="form-actions"><button id="studentSubmitBtn" class="primary-btn" type="submit">Add student</button><button id="studentCancelBtn" class="secondary-btn" type="button" hidden>Cancel</button></div>
               </form>
             </div>
@@ -455,6 +455,7 @@
             <section class="panel panel-gap" id="rosterPanel" hidden>
               <div class="panel-header">
                 <h3 id="rosterTitle">Roster</h3>
+                <span id="rosterCountBadge" class="badge" hidden></span>
                 <span id="rosterHeldBadge" class="badge"></span>
               </div>
               <div id="attendanceActions" class="attendance-actions">
