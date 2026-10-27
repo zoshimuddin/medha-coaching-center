@@ -1,4 +1,5 @@
 -- Fee sync fixes.
+-- Apply this before 20261019_attendance_subject_flow.sql.
 -- 1. Changing a course/package price propagates to every student and every
 --    billing month: enrollments.fee and student_fee_invoices.agreed_fee are
 --    updated for that course. New months bill the new price too, because
