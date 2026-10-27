@@ -1904,12 +1904,6 @@ function attOpen(frame) {
   renderAttPage();
 }
 
-function attYearChips(current) {
-  return ["1st year", "2nd year"].map((y) =>
-    `<button type="button" class="year-chip${current === y ? " active" : ""}" data-att-year="${y}" aria-pressed="${current === y}">${yearLabel(y)}</button>`
-  ).join("");
-}
-
 async function attOpenSubjects(year, mode) {
   const frame = { kind: "subjects", year, mode, subjects: null };
   attOpen(frame);
@@ -2009,13 +2003,7 @@ function renderAttPage() {
       : frame.subjects.length
         ? `<div class="class-list">${frame.subjects.map((s) => `<button type="button" class="class-btn" data-att-course="${s.courseId}"><span>${escapeHtml(s.name)}</span><span class="badge">${toNum(s.count)}</span></button>`).join("")}</div>`
         : emptyState("No subjects have students in this year yet.");
-    body.innerHTML = `<div class="year-chips">${attYearChips(frame.year)}</div><p class="muted-note">${frame.mode === "history" ? "Pick a subject to see its saved dates." : "Pick a subject to take attendance."}</p>${list}`;
-    body.querySelectorAll("[data-att-year]").forEach((btn) => btn.addEventListener("click", async () => {
-      frame.year = btn.dataset.attYear;
-      frame.subjects = null;
-      renderAttPage();
-      await attLoadSubjects(frame);
-    }));
+    body.innerHTML = `<p class="muted-note">${frame.mode === "history" ? "Pick a subject to see its saved dates." : "Pick a subject to take attendance."}</p>${list}`;
     body.querySelectorAll("[data-att-course]").forEach((btn) => btn.addEventListener("click", () => {
       if (frame.mode === "history") attOpenDays(frame.year, btn.dataset.attCourse);
       else attOpenRoster(frame.year, btn.dataset.attCourse, today);
