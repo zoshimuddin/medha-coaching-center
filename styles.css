@@ -728,6 +728,29 @@ select:focus {
   font-size: 13px;
 }
 
+.attendance-days { display: grid; gap: 8px; }
+
+.attendance-day {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fbfcfe;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.attendance-day:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.attendance-day strong { min-width: 104px; }
+.attendance-day span { color: var(--muted); font-size: 13px; }
+
 /* ---------- chips ---------- */
 
 .chips-box {
@@ -2476,6 +2499,9 @@ html, body { overflow-x: clip; }
 .home-card > div { display: grid; gap: 2px; min-width: 0; }
 
 .home-card-due { background: linear-gradient(135deg, #b3403c, #e08a3c); box-shadow: 0 10px 24px rgba(224, 138, 60, 0.35); }
+.home-card.clickable { cursor: pointer; }
+.home-card.clickable:hover { transform: translateY(-1px); }
+.home-card.clickable:focus-visible { outline: 3px solid #ffffff; outline-offset: -3px; }
 .home-card-in { background: linear-gradient(135deg, #1f8a4c, #2f9e63); box-shadow: 0 10px 24px rgba(47, 158, 99, 0.35); }
 
 .home-card-icon { display: inline-flex; }

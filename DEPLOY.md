@@ -41,9 +41,16 @@ same live database e thake. localStorage ar nei.
     reports count it on that day (2 admissions today = ৳1000). All students
     admitted before this migration are back-filled with their admission
     receipt. Deleting an admission receipt undoes that deposit.
-12. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+12. Run `supabase/20261018_fee_sync.sql` — changing a course/package price now
+    updates every student and every billing month, and removing a course from a
+    student drops that course's unpaid fee everywhere (past collected months
+    are kept as history).
+13. Run `supabase/20261019_attendance_subject_flow.sql` — the new
+    year → subject attendance flow: any staff member can take attendance with a
+    date-wise history. Subjects no longer need a weekly Schedule row.
+14. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
     off if users should be created without email confirmation.
-13. Create the owner account in **Authentication > Users > Add user** and copy
+15. Create the owner account in **Authentication > Users > Add user** and copy
     its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -53,7 +60,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-14. Onno user ra ekhon **Settings > User management** thekei banano jabe
+16. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function

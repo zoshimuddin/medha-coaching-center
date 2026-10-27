@@ -243,7 +243,7 @@ const ROLE_DEFAULTS = {
   subadmin: { tabs: ["dashboard", "students", "courses", "attendance", "fees", "money"], moneyEdit: true },
   editor: { tabs: ["dashboard", "students", "courses", "attendance", "fees"], moneyEdit: false },
   viewer: { tabs: ["dashboard", "students", "courses", "attendance", "fees", "money"], moneyEdit: false },
-  accountant: { tabs: ["dashboard", "money"], moneyEdit: true },
+  accountant: { tabs: ["dashboard", "attendance", "money"], moneyEdit: true },
   teacher: { tabs: ["attendance"], moneyEdit: false },
   student: { tabs: ["dashboard"], moneyEdit: false },
 };
@@ -283,11 +283,11 @@ let editingCourseId = null;
 let editingOfferingId = null;
 let editingUserId = null;
 let currentUser = null;
-let activeSession = { offering: null, sessionId: null, marks: new Map() };
+let activeSession = { sessionId: null, courseId: "", year: "", marks: new Map() };
 let logoPicked = null;
 let studentStatusFilter = "active";
-let attendanceSubjectId = "";
-let attendanceYear = "all";
+let attendanceYear = "1st year";
+let attendanceCourseId = "";
 let editingReceiptId = null;
 let currentFeeStudentId = null;
 let lastReceipt = null;
@@ -772,6 +772,10 @@ function initHistoryNav() {
       els.feeDetailPage.hidden = true;
       return;
     }
+    if (!els.dueListPage.hidden && st.ccm !== "due-list") {
+      els.dueListPage.hidden = true;
+      return;
+    }
     // Traveling into a saved detail entry re-opens that page without new history.
     if (st.ccm === "student-detail") {
       els.studentDetailPage.hidden = false;
@@ -782,6 +786,11 @@ function initHistoryNav() {
     }
     if (st.ccm === "fee-detail") {
       if (st.studentId) openFeeDetail(st.studentId, false);
+      return;
+    }
+    if (st.ccm === "due-list") {
+      els.dueListPage.hidden = false;
+      openDueList();
       return;
     }
     // A saved app entry returns to that section.
@@ -837,15 +846,6 @@ function canEditTab(tab) {
   return (currentUser.tabs || []).includes(tab);
 }
 
-function myOfferings() {
-  if (isManager()) return state.offerings;
-  return state.offerings.filter((o) => o.teacherId === currentUser?.id);
-}
-
-function canMarkOffering(offering) {
-  return !!(currentUser && offering && (isManager() || offering.teacherId === currentUser.id));
-}
-
 function applyPermissions() {
   document.querySelectorAll("#mainNav .nav-tab").forEach((tab) => {
     tab.style.display = canView(tab.dataset.view) ? "" : "none";
@@ -897,7 +897,7 @@ function switchView(viewId, title, updateHistory = true) {
     if (st.ccm === "app") setAppState({ ccm: "app", view: viewId }, "replaceState");
     else setAppState({ ccm: "app", view: viewId }, "pushState");
   }
-  if (viewId === "attendance") renderAttendanceClasses();
+  if (viewId === "attendance") renderAttendanceView();
 }
 
 document.querySelectorAll(".nav-tab, #mobileBottomNav button").forEach((tab) => {
@@ -913,6 +913,18 @@ document.querySelectorAll(".metric[data-goto]").forEach((card) => {
   card.addEventListener("click", go);
   card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
 });
+
+if (els.homeDueCard) {
+  const openDue = () => {
+    if (!canView("fees")) return;
+    els.dueListPage.hidden = false;
+    pushDetailState({ ccm: "due-list" });
+    openDueList();
+  };
+  els.homeDueCard.addEventListener("click", openDue);
+  els.homeDueCard.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDue(); } });
+}
+els.dueListBackBtn.addEventListener("click", () => history.back());
 
 function requireEdit(tab) {
   if (!canEditTab(tab)) {
@@ -1201,17 +1213,20 @@ function renderStudentCourseBox() {
     const box = row.querySelector("input[type='checkbox']");
     const feeInput = row.querySelector("input[type='number']");
     box.addEventListener("change", () => {
-      if (box.checked) {
-        // One course OR package at a time: picking a row clears every other.
-        els.studentCoursesBox.querySelectorAll(".course-pick").forEach((other) => {
-          if (other === row) return;
-          const otherBox = other.querySelector("input[type='checkbox']");
-          if (otherBox.checked) {
+      // Courses are multi-select; packages are single-select, so picking a
+      // package clears the other packages (courses stay selected).
+      const group = row.closest(".course-pick-group");
+      if (box.checked && group?.dataset.groupType === "package") {
+        els.studentCoursesBox
+          .querySelectorAll(".course-pick-group[data-group-type='package'] .course-pick")
+          .forEach((other) => {
+            if (other === row) return;
+            const otherBox = other.querySelector("input[type='checkbox']");
+            if (!otherBox.checked) return;
             otherBox.checked = false;
             other.classList.remove("picked");
             other.querySelector("input[type='number']").disabled = true;
-          }
-        });
+          });
       }
       row.classList.toggle("picked", box.checked);
       feeInput.disabled = !box.checked;
@@ -1566,6 +1581,9 @@ els.courseForm.addEventListener("submit", async (event) => {
   }
   resetCourseForm();
   await db.loadCore();
+  // A price change rewrites enrollments and invoices server-side, so refresh
+  // finance too — Fees/Due must follow the new price everywhere.
+  await db.loadFinance();
   renderAll();
 });
 
@@ -1858,110 +1876,82 @@ function renderOfferings() {
 
 /* ================= attendance ================= */
 
-els.attendanceDate.addEventListener("change", renderAttendanceClasses);
-els.attendanceSubject.addEventListener("change", () => {
-  attendanceSubjectId = els.attendanceSubject.value;
-  renderAttendanceClasses();
-});
-document.querySelectorAll("[data-roster-year]").forEach((chip) => {
-  chip.addEventListener("click", () => {
-    attendanceYear = chip.dataset.rosterYear;
-    document.querySelectorAll("[data-roster-year]").forEach((item) => {
-      const active = item === chip;
-      item.classList.toggle("active", active);
-      item.setAttribute("aria-pressed", String(active));
-    });
-    renderAttendanceClasses();
-  });
+els.attendanceDate.addEventListener("change", () => {
+  if (attendanceCourseId) openSubjectAttendance(attendanceCourseId, attendanceYear, els.attendanceDate.value || today);
 });
 
-async function loadOfferingCounts() {
-  const { data, error } = await sb.rpc("offering_enrollment_counts");
-  if (!error && Array.isArray(data)) {
-    state.offeringCounts = {};
-    for (const row of data) state.offeringCounts[row.offeringId] = Number(row.count || 0);
-  }
+// Subjects a year has students in (direct enrollments + package subjects).
+// Server-side so teachers/accountants who do not load the student list still
+// see the subjects.
+async function renderAttendanceView() {
+  if (!canView("attendance")) return;
+  els.attendanceYearBtns.innerHTML = ["1st year", "2nd year"].map((year) =>
+    `<button type="button" class="year-chip${attendanceYear === year ? " active" : ""}" data-att-year="${year}" aria-pressed="${attendanceYear === year}">${yearLabel(year)}</button>`
+  ).join("");
+  els.attendanceYearBtns.querySelectorAll("[data-att-year]").forEach((button) =>
+    button.addEventListener("click", () => {
+      attendanceYear = button.dataset.attYear;
+      attendanceCourseId = "";
+      activeSession = { sessionId: null, courseId: "", year: attendanceYear, marks: new Map() };
+      els.rosterPanel.hidden = true;
+      renderAttendanceView();
+    }));
+
+  if (currentRoute !== "attendance") return;
+  const { data, error } = await sb.rpc("attendance_year_subjects", { p_year: attendanceYear });
+  const subjects = !error && Array.isArray(data) ? data : [];
+  const cards = subjects.length
+    ? subjects.map((row) => `<button type="button" class="class-btn${row.courseId === attendanceCourseId ? " active" : ""}" data-att-course="${row.courseId}"><span>${escapeHtml(row.name)}</span><span class="badge">${toNum(row.count)}</span></button>`).join("")
+    : emptyState("No subjects have students in this year yet.");
+  els.attendanceSubjects.innerHTML = cards;
+  els.attendanceHistorySubjects.innerHTML = cards;
+  const pickSubject = (button) => {
+    attendanceCourseId = button.dataset.attCourse;
+    renderAttendanceView();
+    if (!els.attendanceDate.value) els.attendanceDate.value = today;
+    openSubjectAttendance(attendanceCourseId, attendanceYear, els.attendanceDate.value);
+  };
+  els.attendanceSubjects.querySelectorAll("[data-att-course]").forEach((button) => button.addEventListener("click", () => pickSubject(button)));
+  els.attendanceHistorySubjects.querySelectorAll("[data-att-course]").forEach((button) => button.addEventListener("click", () => pickSubject(button)));
+  renderAttendanceDays();
 }
 
-async function renderAttendanceClasses() {
-  const date = els.attendanceDate.value || today;
-  const dow = new Date(date + "T12:00:00").getDay();
-  const mine = myOfferings()
-    .filter((o) => o.active && o.weekdays.includes(dow))
-    .filter((o) => attendanceYear === "all" || o.year === attendanceYear);
-  mine.sort((a, b) => (a.classTime || "99:99").localeCompare(b.classTime || "99:99"));
-
-  await loadOfferingCounts();
-
-  const prev = attendanceSubjectId;
-  els.attendanceSubject.innerHTML = mine.length
-    ? mine.map((o) => {
-        const count = state.offeringCounts[o.id] ?? 0;
-        return `<option value="${o.id}">${escapeHtml(getCourseName(o.courseId))} · ${escapeHtml(yearLabel(o.year))} · All groups${o.classTime ? " · " + escapeHtml(formatClassTime(o.classTime)) : ""} (${count})</option>`;
-      }).join("")
-    : `<option value="">No class scheduled</option>`;
-  if (mine.some((o) => o.id === prev)) els.attendanceSubject.value = prev;
-  attendanceSubjectId = els.attendanceSubject.value || "";
-
-  els.attendanceHistoryNote.hidden = date === today;
-
-  const chosen = mine.find((o) => o.id === attendanceSubjectId);
-  if (!chosen) {
-    els.attendanceClasses.innerHTML = emptyState(date === today ? t("emptyClasses") : "Nothing saved for this subject on this date.");
-    els.rosterPanel.hidden = true;
-    activeSession = { offering: null, sessionId: null, marks: new Map() };
-    return;
-  }
-  els.attendanceClasses.innerHTML = "";
-  await openClassRoster(chosen.id, date);
+async function renderAttendanceDays() {
+  if (!attendanceCourseId) { els.attendanceDays.innerHTML = emptyState("Pick a subject to see its history."); return; }
+  const { data, error } = await sb.rpc("subject_attendance_days", { p_course: attendanceCourseId, p_year: attendanceYear });
+  if (error) { fail(error); return; }
+  const days = Array.isArray(data) ? data : [];
+  els.attendanceDays.innerHTML = days.length
+    ? days.map((day) => `<button type="button" class="attendance-day" data-att-date="${day.date}"><strong>${escapeHtml(day.date)}</strong><span class="badge ${day.status === "held" ? "paid" : ""}">${day.status === "held" ? t("held") : "Saved"}</span><span>${t("present")} ${toNum(day.present)} · ${t("absent")} ${toNum(day.absent)}</span></button>`).join("")
+    : emptyState("No saved attendance for this subject yet.");
+  els.attendanceDays.querySelectorAll("[data-att-date]").forEach((button) =>
+    button.addEventListener("click", () => {
+      els.attendanceDate.value = button.dataset.attDate;
+      openSubjectAttendance(attendanceCourseId, attendanceYear, button.dataset.attDate);
+    }));
 }
 
-async function openClassRoster(offeringId, date) {
-  const offering = state.offerings.find((o) => o.id === offeringId);
-  if (!offering || !canMarkOffering(offering)) {
-    toast(t("msgNoCoursePerm"));
-    return;
-  }
+async function openSubjectAttendance(courseId, year, date) {
   try {
-    let sessionId = null;
-    if (date === today) {
-      const { data: created, error: sessErr } = await sb.rpc("get_or_create_class_session", { p_offering: offeringId, p_date: date });
-      if (sessErr) throw sessErr;
-      sessionId = created;
-    } else {
-      const { data: found } = await sb.from("class_sessions").select("id").eq("offering_id", offeringId).eq("class_date", date).maybeSingle();
-      if (!found) {
-        els.rosterPanel.hidden = true;
-        els.attendanceClasses.innerHTML = emptyState("Nothing saved for this subject on this date.");
-        activeSession = { offering: null, sessionId: null, marks: new Map() };
-        return;
-      }
-      sessionId = found.id;
-    }
-    const { data: roster, error: rosterErr } = await sb.rpc("teacher_roster", { p_session: sessionId });
-    if (rosterErr) throw rosterErr;
-    activeSession = { offering: offeringId, sessionId, marks: new Map() };
-    (roster || []).forEach((r) => {
-      if (r.attendance) activeSession.marks.set(r.id, r.attendance);
-    });
-    const sess = await sb.from("class_sessions").select("status").eq("id", sessionId).maybeSingle();
-    if (sess?.data) {
-      els.rosterHeldBadge.textContent = sess.data.status === "held" ? t("held") : "";
-      els.rosterHeldBadge.className = "badge " + (sess.data.status === "held" ? "paid" : "");
-    }
-    els.rosterTitle.textContent = `${getCourseName(offering.courseId)} · ${yearLabel(offering.year)} · ${offering.group}`;
+    const { data, error } = await sb.rpc("attendance_subject_sheet", { p_course: courseId, p_year: year, p_date: date });
+    if (error) throw error;
+    const students = data?.students || [];
+    activeSession = { sessionId: data?.sessionId || null, courseId, year, marks: new Map() };
+    students.forEach((row) => { if (row.attendance) activeSession.marks.set(row.id, row.attendance); });
+    els.rosterHeldBadge.textContent = data?.held ? t("held") : "";
+    els.rosterHeldBadge.className = "badge " + (data?.held ? "paid" : "");
+    els.rosterTitle.textContent = `${getCourseName(courseId)} · ${yearLabel(year)} · ${date}`;
+    els.attendanceHistoryNote.hidden = date === today;
     els.rosterPanel.hidden = false;
-    renderRoster(roster || []);
+    renderRoster(students);
   } catch (err) {
     fail(err);
   }
 }
 
 function renderRoster(roster) {
-  const offering = state.offerings.find((o) => o.id === activeSession.offering);
-  const date = els.attendanceDate.value || today;
-  const editable = isManager() || (canMarkOffering(offering) && date === today);
-  els.attendanceActions.style.display = editable ? "" : "none";
+  // Any staff member can take/edit attendance, for any date.
+  els.attendanceActions.style.display = "";
   els.rosterPanel.dataset.roster = JSON.stringify(roster);
   els.rosterCountBadge.hidden = roster.length === 0;
   els.rosterCountBadge.textContent = `${roster.length} students`;
@@ -1983,10 +1973,10 @@ function renderRoster(roster) {
               ${r.address ? `<span>${escapeHtml(r.address)}</span>` : ""}
             </div>
             ${calls ? `<div class="attendance-calls">${calls}</div>` : ""}
-            ${editable ? `<div class="inline-tools">
+            <div class="inline-tools">
               <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
               <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
-            </div>` : `<span class="badge ${status === "present" ? "paid" : status === "absent" ? "due" : ""}">${status === "present" ? t("present") : status === "absent" ? t("absent") : t("notMarked")}</span>`}
+            </div>
           </div>
         </article>`;
       }).join("")
@@ -2012,10 +2002,11 @@ els.saveAttendanceBtn.addEventListener("click", async () => {
     .filter((r) => activeSession.marks.get(r.id))
     .map((r) => ({ student_id: r.id, status: activeSession.marks.get(r.id) }));
   if (!records.length) { toast(t("msgNoChanges")); return; }
-  const offeringId = activeSession.offering;
+  const courseId = activeSession.courseId;
+  const year = activeSession.year;
   const date = els.attendanceDate.value || today;
   try {
-    const { error } = await sb.rpc("mark_class_attendance", {
+    const { error } = await sb.rpc("mark_subject_attendance", {
       p_session: activeSession.sessionId,
       p_records: records,
       p_held: true,
@@ -2026,9 +2017,9 @@ els.saveAttendanceBtn.addEventListener("click", async () => {
     return;
   }
   toast(t("tAttendanceSaved"));
-  logActivity("Attendance", `${getCourseName(state.offerings.find((o) => o.id === offeringId)?.courseId)} — ${records.length}`);
-  await renderAttendanceClasses();
-  await openClassRoster(offeringId, date);
+  logActivity("Attendance", `${getCourseName(courseId)} · ${year} — ${records.length}`);
+  await openSubjectAttendance(courseId, year, date);
+  await renderAttendanceDays();
 });
 
 /* ================= fees ================= */
@@ -2102,6 +2093,29 @@ function renderFees() {
       }).join("")
     : emptyState("No active students match this month and search.");
   document.querySelectorAll("[data-fee-student]").forEach((button) => button.addEventListener("click", () => openFeeDetail(button.dataset.feeStudent)));
+}
+
+// Home "Total due" breakdown: every student with an outstanding balance.
+function openDueList() {
+  if (!canView("fees")) return;
+  const rows = state.students
+    .map((student) => ({ student, due: studentTotalDue(student.id) }))
+    .filter((row) => row.due > 0)
+    .sort((a, b) => b.due - a.due);
+  const total = rows.reduce((sum, row) => sum + row.due, 0);
+  els.dueListTitle.textContent = `Outstanding dues · ${formatMoney(total)}`;
+  els.dueListBody.innerHTML = rows.length
+    ? rows.map(({ student, due }) => `<button class="fee-student-card" type="button" data-due-student="${student.id}">
+        <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
+        <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
+        <span class="fee-student-balance"><strong class="badge due">Due ${formatMoney(due)}</strong></span>
+      </button>`).join("")
+    : emptyState("No students have an outstanding due.");
+  els.dueListBody.querySelectorAll("[data-due-student]").forEach((button) =>
+    button.addEventListener("click", () => {
+      els.dueListPage.hidden = true;
+      openFeeDetail(button.dataset.dueStudent, true);
+    }));
 }
 
 async function openFeeDetail(studentId, push = true) {
@@ -3493,9 +3507,13 @@ function renderReports() {
   const active = state.students.filter((student) => student.status === "active").length;
   const inactive = state.students.length - active;
 
+  const bankDeposits = state.bankTx
+    .filter((tx) => inRange(tx.date, range) && tx.direction === "deposit")
+    .reduce((sum, tx) => sum + tx.amount, 0);
+  const net = income - expense + bankDeposits;
   els.reportIncome.textContent = formatMoney(income);
   els.reportExpense.textContent = formatMoney(expense);
-  els.reportNet.textContent = formatMoney(income - expense);
+  els.reportNet.textContent = formatMoney(net);
   // Bank balance as of the end of the selected period, not just today.
   const bankEnd = state.bank.opening + state.bankTx
     .filter((tx) => String(tx.date || "") <= range.end)
@@ -3512,7 +3530,7 @@ function renderReports() {
   els.chartReportMoney.innerHTML = donutChart([
     { label: "Income", value: income, color: "#2f9e63" },
     { label: "Expense", value: expense, color: "#e08a3c" },
-  ], formatMoney(income - expense), "net", formatMoney);
+  ], formatMoney(net), "net", formatMoney);
   els.chartReportStudents.innerHTML = donutChart([
     { label: "Active", value: active, color: "#2f9e63" },
     { label: "Inactive", value: inactive, color: "#e08a3c" },
@@ -3645,7 +3663,7 @@ function renderAll() {
   renderCourses();
   renderCourseSubjectsBox(els.courseSubjectsWrap.hidden ? [] : selectedCourseSubjects());
   renderOfferings();
-  renderAttendanceClasses();
+  renderAttendanceView();
   renderFees();
   renderMoney();
   renderBank();
