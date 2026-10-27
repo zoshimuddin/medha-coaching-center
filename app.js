@@ -3790,3 +3790,11 @@ async function boot() {
 }
 
 boot();
+
+/* PWA: register the service worker so the app can be installed and its shell
+   opens offline. Safe to ignore when unsupported (or on file://). */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch((err) => console.debug("Service worker skipped:", err?.message));
+  });
+}

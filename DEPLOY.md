@@ -133,6 +133,22 @@ SUPABASE_ACCESS_TOKEN=sbp_xxx ./supabase/apply.sh \
 Every migration must be safe to re-run (`create or replace`, `if not exists`).
 Create a Personal Access Token at Supabase → **Account → Access Tokens**.
 
+## 4c. Install as an app (PWA)
+
+The site is a Progressive Web App — no store, no cost.
+
+- **Files:** `manifest.webmanifest` (name, icons, standalone), `sw.js`
+  (service worker: network-first, offline app shell), `icons/*.png`, and the
+  manifest/theme/icon tags in `index.html`.
+- **Install on Android:** open the site in Chrome → menu **⋮** → **Install app**
+  (or **Add to Home screen**). It then opens full-screen with its own icon, and
+  the shell still opens when the phone is offline.
+- **Maintenance:** editing `app.js`/`styles.css` — bump `?v=` in `index.html`
+  (optional; the service worker fetches fresh when online). Adding/removing
+  files from the offline shell or changing icons — bump `CACHE` in `sw.js`.
+- `.htaccess` serves `.webmanifest` as `application/manifest+json` and keeps
+  html/js/css uncached so deploys go live immediately.
+
 ## 5. Import legacy browser data
 
 If you still have data in an old browser version:

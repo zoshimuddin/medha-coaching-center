@@ -10,6 +10,11 @@
   Require all denied
 </FilesMatch>
 
+# PWA: serve the web app manifest with its proper MIME type.
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+</IfModule>
+
 # Never cache website files — Hostinger git deploys go live instantly.
 <IfModule mod_headers.c>
   <FilesMatch "\.(html|js|css)$">
