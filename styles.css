@@ -361,6 +361,24 @@ label {
   color: var(--ink);
 }
 
+/* Money / summary values must never break onto a second line. Columns and
+   font size shrink on small screens instead (see the media queries below). */
+.home-card strong,
+.home-periods strong,
+.home-finance-highlight strong,
+.home-summary-card strong,
+.metric strong,
+.student-metrics strong,
+.fee-stats-bar strong,
+.money-today-grid strong,
+.money-balance-bar strong,
+.report-overview strong,
+.report-metrics strong {
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
 .dashboard-grid,
 .work-grid {
   display: grid;
@@ -1518,8 +1536,7 @@ td {
   }
 
   .metric strong {
-    font-size: 20px;
-    white-space: normal;
+    font-size: 18px;
   }
 
   .panel {
@@ -1922,14 +1939,14 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
   .compact-item strong { font-size: 15px; }
   .home-shortcuts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .home-summary-card { padding: 12px; }
-  .home-summary-card strong { font-size: 20px; }
+  .home-summary-card strong { font-size: 19px; white-space: nowrap; }
   .student-tools { padding: 12px; }
   .student-status-filter { justify-self: start; }
   .app-dialog { padding: 16px; }
   .fee-amount-row { grid-template-columns: minmax(0, 1fr) auto; }
   .receipt-paper { width: 100%; }
-  .report-overview strong { font-size: 18px; overflow-wrap: anywhere; }
-  .report-metrics strong { font-size: 18px; overflow-wrap: anywhere; }
+  .report-overview strong { font-size: 16px; white-space: nowrap; }
+  .report-metrics strong { font-size: 16px; white-space: nowrap; }
 }
 
 @media print {
@@ -2204,12 +2221,12 @@ body:has(#bootOverlay:not([hidden])) .mobile-bottom-nav { display: none !importa
 @media (max-width: 620px) {
   .fee-stats-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .fee-stats-bar article { padding: 10px; }
-  .fee-stats-bar strong { font-size: 16px; overflow-wrap: anywhere; }
+  .fee-stats-bar strong { font-size: 15px; white-space: nowrap; }
   .fee-stats-bar span { font-size: 11.5px; }
   .money-today-grid { gap: 6px; }
   .money-today-grid article { padding: 10px; }
-  .money-today-grid strong { font-size: 17px; overflow-wrap: anywhere; }
-  .money-balance-bar strong { font-size: 22px; overflow-wrap: anywhere; }
+  .money-today-grid strong { font-size: 15px; white-space: nowrap; }
+  .money-balance-bar strong { font-size: 20px; white-space: nowrap; }
   .report-charts { grid-template-columns: 1fr; }
   .donut { width: min(140px, 60%); }
   .page-overlay { padding: 12px 12px calc(20px + env(safe-area-inset-bottom)); }
@@ -2499,9 +2516,6 @@ html, body { overflow-x: clip; }
 .home-card > div { display: grid; gap: 2px; min-width: 0; }
 
 .home-card-due { background: linear-gradient(135deg, #b3403c, #e08a3c); box-shadow: 0 10px 24px rgba(224, 138, 60, 0.35); }
-.home-card.clickable { cursor: pointer; }
-.home-card.clickable:hover { transform: translateY(-1px); }
-.home-card.clickable:focus-visible { outline: 3px solid #ffffff; outline-offset: -3px; }
 .home-card-in { background: linear-gradient(135deg, #1f8a4c, #2f9e63); box-shadow: 0 10px 24px rgba(47, 158, 99, 0.35); }
 
 .home-card-icon { display: inline-flex; }
@@ -2523,12 +2537,18 @@ html, body { overflow-x: clip; }
 }
 
 @media (max-width: 620px) {
-  .home-card strong { font-size: 17px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+  .home-card strong { font-size: 17px; }
   .home-card { padding: 12px; }
+  .home-periods strong { font-size: 15px; }
 }
 
-@media (max-width: 380px) {
-  .home-card strong { font-size: 15px; }
+@media (max-width: 420px) {
+  .home-finance-highlight { grid-template-columns: 1fr; }
+  .home-periods { grid-template-columns: 1fr; }
+  .home-periods > div + div { border-left: 0; border-top: 1px solid var(--line); padding-top: 8px; }
+  .fee-stats-bar { grid-template-columns: 1fr 1fr; }
+  .money-today-grid { grid-template-columns: 1fr 1fr; }
+  .home-card strong { font-size: 16px; }
 }
 
 /* ---------- courses: top three + scrollable rest ---------- */

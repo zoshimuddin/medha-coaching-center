@@ -771,10 +771,6 @@ function initHistoryNav() {
       els.feeDetailPage.hidden = true;
       return;
     }
-    if (!els.dueListPage.hidden && st.ccm !== "due-list") {
-      els.dueListPage.hidden = true;
-      return;
-    }
     if (!els.attPage.hidden && st.ccm !== "att") {
       attReset();
       return;
@@ -789,11 +785,6 @@ function initHistoryNav() {
     }
     if (st.ccm === "fee-detail") {
       if (st.studentId) openFeeDetail(st.studentId, false);
-      return;
-    }
-    if (st.ccm === "due-list") {
-      els.dueListPage.hidden = false;
-      openDueList();
       return;
     }
     if (st.ccm === "att") {
@@ -925,18 +916,6 @@ document.querySelectorAll(".metric[data-goto]").forEach((card) => {
   card.addEventListener("click", go);
   card.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
 });
-
-if (els.homeDueCard) {
-  const openDue = () => {
-    if (!canView("fees")) return;
-    els.dueListPage.hidden = false;
-    pushDetailState({ ccm: "due-list" });
-    openDueList();
-  };
-  els.homeDueCard.addEventListener("click", openDue);
-  els.homeDueCard.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openDue(); } });
-}
-els.dueListBackBtn.addEventListener("click", () => history.back());
 
 function requireEdit(tab) {
   if (!canEditTab(tab)) {
@@ -2155,29 +2134,6 @@ function renderFees() {
       }).join("")
     : emptyState("No active students match this month and search.");
   document.querySelectorAll("[data-fee-student]").forEach((button) => button.addEventListener("click", () => openFeeDetail(button.dataset.feeStudent)));
-}
-
-// Home "Total due" breakdown: every student with an outstanding balance.
-function openDueList() {
-  if (!canView("fees")) return;
-  const rows = state.students
-    .map((student) => ({ student, due: studentTotalDue(student.id) }))
-    .filter((row) => row.due > 0)
-    .sort((a, b) => b.due - a.due);
-  const total = rows.reduce((sum, row) => sum + row.due, 0);
-  els.dueListTitle.textContent = `Outstanding dues · ${formatMoney(total)}`;
-  els.dueListBody.innerHTML = rows.length
-    ? rows.map(({ student, due }) => `<button class="fee-student-card" type="button" data-due-student="${student.id}">
-        <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
-        <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
-        <span class="fee-student-balance"><strong class="badge due">Due ${formatMoney(due)}</strong></span>
-      </button>`).join("")
-    : emptyState("No students have an outstanding due.");
-  els.dueListBody.querySelectorAll("[data-due-student]").forEach((button) =>
-    button.addEventListener("click", () => {
-      els.dueListPage.hidden = true;
-      openFeeDetail(button.dataset.dueStudent, true);
-    }));
 }
 
 async function openFeeDetail(studentId, push = true) {
