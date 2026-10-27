@@ -104,6 +104,32 @@ to the configured branch; do not upload or regenerate `hostinger-deploy.zip`.
 The `.htaccess` file disables caching for HTML, JavaScript, and CSS so Git
 Deploy changes take effect without a manual archive upload.
 
+## 4b. Migrations (Supabase)
+
+Website code and the database migrate separately. New `supabase/*.sql` files must
+be applied to the project (ref `mlsyvhlnnjexqtaswayi`) once. Two ways:
+
+**Automatic (like the website):** a Supabase Personal Access Token as a GitHub
+repo secret turns on `.github/workflows/supabase-migrate.yml`. Then every push
+that changes `supabase/*.sql` applies just those files automatically.
+
+```bash
+# one time (needs a 'repo' + secrets scope gh token)
+gh secret set SUPABASE_ACCESS_TOKEN --repo zoshimuddin/medha-coaching-center
+# paste the token (sbp_...) when prompted
+```
+
+**Manual (or for pending files):** run the helper, which posts each file to the
+Supabase Management API (no database password needed):
+
+```bash
+SUPABASE_ACCESS_TOKEN=sbp_xxx ./supabase/apply.sh \
+  supabase/20261018_fee_sync.sql supabase/20261019_attendance_subject_flow.sql
+```
+
+Every migration must be safe to re-run (`create or replace`, `if not exists`).
+Create a Personal Access Token at Supabase → **Account → Access Tokens**.
+
 ## 5. Import legacy browser data
 
 If you still have data in an old browser version:
