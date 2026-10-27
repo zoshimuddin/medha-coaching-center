@@ -275,7 +275,7 @@ const state = {
   students: [], invoices: [], money: [], dues: [],
   bank: { opening: 0 }, bankTx: [],
   teacherPayments: [], heldSessions: [],
-  users: [], activity: [], feePayments: [], feeDiscounts: [], usersLoadError: "", admissions: [], teacherAdjustments: [],
+  users: [], activity: [], feePayments: [], feeDiscounts: [], usersLoadError: "", admissions: [], teacherAdjustments: [], dueNotes: {},
   ideas: [], offeringCounts: {}, trash: [],
 };
 let editingStudentId = null;
@@ -496,7 +496,7 @@ const db = {
   async loadFinance() {
     const canFees = canView("fees");
     const canMoney = canView("money");
-    const [invoiceRows, paymentRows, discountRows, moneyRows, dueRows, bankRow, bankTxRows, admissionRows] = await Promise.all([
+    const [invoiceRows, paymentRows, discountRows, moneyRows, dueRows, bankRow, bankTxRows, admissionRows, noteRows] = await Promise.all([
       canFees ? safe(sb.from("student_fee_invoices").select("*")) : [],
       canFees ? safe(sb.from("student_fee_payments").select("invoice_id,amount,payment_date,paid_at,received_by")) : [],
       canFees ? safe(sb.from("student_fee_discounts").select("invoice_id,amount,billing_month,applied_at,applied_by")) : [],
@@ -505,11 +505,16 @@ const db = {
       canMoney ? safe(sb.from("bank_account").select("*").eq("id", true).maybeSingle()) : null,
       canMoney ? safe(sb.from("bank_transactions").select("*").order("transaction_date", { ascending: false }).limit(200)) : [],
       canFees ? safe(sb.from("admission_payments").select("student_id, required_amount, amount_paid, paid_at")) : [],
+      canFees ? safe(sb.from("student_due_notes").select("student_id,billing_month,note")) : [],
     ]);
     state.admissions = (Array.isArray(admissionRows) ? admissionRows : []).map((r) => ({
       studentId: r.student_id, required: Number(r.required_amount || 0), paid: Number(r.amount_paid || 0),
       paidAt: r.paid_at || "",
     }));
+    state.dueNotes = {};
+    for (const row of (Array.isArray(noteRows) ? noteRows : [])) {
+      state.dueNotes[`${row.student_id}|${String(row.billing_month || "").slice(0, 7)}`] = row.note || "";
+    }
     state.feePayments = paymentRows || [];
     state.feeDiscounts = discountRows || [];
     const paymentsByInvoice = new Map();
@@ -2185,7 +2190,7 @@ async function openFeeDetail(studentId, push = true) {
   els.feeDetailTitle.textContent = `${student.name} · ${month}`;
   els.feeDetailBody.innerHTML = `
     <div class="fee-detail-student"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))} · ${escapeHtml(yearLabel(student.year))}</span><span class="badge ${totalDue > 0 ? "due" : "paid"}">${totalDue > 0 ? (due > 0 ? `Due ${formatMoney(due)}` : `Admission due`) : "Fully paid"}</span></div></div>
-    <section class="fee-detail-section"><h3>Monthly fees</h3>${courses || emptyState("No invoices for this month.")}${admissionRow}<div class="fee-course-total"><strong>Total due${pendingAdmission > 0 ? " (incl. admission)" : ""}</strong><strong>${formatMoney(totalDue)}</strong></div></section>
+    <section class="fee-detail-section"><h3>Monthly fees</h3>${courses || emptyState("No invoices for this month.")}${admissionRow}<div class="fee-course-total"><strong>Total due${pendingAdmission > 0 ? " (incl. admission)" : ""}</strong><strong>${formatMoney(totalDue)}</strong></div>${due > 0 ? `<label class="due-note"><span>Note for ${escapeHtml(month)}</span><input id="feeDueNoteInput" type="text" maxlength="500" placeholder="Write a note…" value="${escapeHtml(state.dueNotes[`${studentId}|${month}`] || "")}" /></label>` : ""}</section>
     ${showForm ? `<form id="feeCollectionForm" class="fee-collection-form"><h3>${editing ? "Edit receipt" : "Collect payment"}</h3>${editing ? `<p class="muted-note">Saving replaces this receipt with the new amount and date.</p>` : (pendingAdmission > 0 ? `<p class="muted-note">Includes the one-time admission fee — later months never include it.</p>` : "")}<div class="fee-amount-row"><label><span>Amount (৳)</span><input id="feePaymentAmount" type="number" min="0" max="${editBase + pendingAdmission}" step="0.01" value="${formAmount}" required /></label><label class="discount-option"><input id="feeDiscountToggle" type="checkbox" ${formDiscount ? "checked" : ""} /><span>Discount</span></label></div><p id="feeDiscountPreview" class="discount-preview" hidden></p><label><span>Payment date</span><input id="feePaymentDate" type="date" value="${formDate}" required /></label><div class="form-actions"><button id="collectFeeBtn" class="primary-btn" type="submit">${editing ? "Update receipt" : "Collect"}</button>${editing ? `<button type="button" id="cancelEditReceiptBtn" class="secondary-btn">Cancel edit</button>` : ""}</div></form>` : ""}
     <section class="fee-detail-section"><h3>Collection history</h3><div class="fee-history-list">${historyHtml}</div></section>`;
   els.feeDetailPage.hidden = false;
@@ -2201,6 +2206,7 @@ async function openFeeDetail(studentId, push = true) {
     openFeeDetail(studentId);
   }));
   els.feeDetailBody.querySelectorAll("[data-delete-receipt]").forEach((button) => button.addEventListener("click", () => deleteReceipt(button.dataset.deleteReceipt, student)));
+  document.getElementById("feeDueNoteInput")?.addEventListener("change", (event) => saveDueNote(studentId, month, event.target.value));
   document.getElementById("cancelEditReceiptBtn")?.addEventListener("click", () => {
     editingReceiptId = null;
     openFeeDetail(studentId);
@@ -2210,9 +2216,11 @@ async function openFeeDetail(studentId, push = true) {
     submitMonthFee(student, month, due, editBase, pendingAdmission);
   });
   const updateDiscountPreview = () => {
-    const amount = Number(document.getElementById("feePaymentAmount").value);
+    const amountEl = document.getElementById("feePaymentAmount");
     const checkbox = document.getElementById("feeDiscountToggle");
     const preview = document.getElementById("feeDiscountPreview");
+    if (!amountEl || !checkbox || !preview) return;
+    const amount = Number(amountEl.value);
     const discount = Math.max(0, editBase - (Number.isFinite(amount) ? amount : 0));
     preview.hidden = !checkbox.checked;
     preview.textContent = `Discount: ${formatMoney(discount)} · Remaining after discount: ${formatMoney(0)}`;
@@ -3114,7 +3122,9 @@ els.activityUser.addEventListener("change", renderActivity);
 
 async function renderDashboard() {
   if (!canView("dashboard")) return;
-  const allDue = state.invoices.reduce((s, i) => s + invoiceDue(i), 0);
+  // Total due = this month's unpaid amount, so it reads as the current
+  // month's outstanding rather than an all-time figure.
+  const allDue = state.invoices.filter((i) => i.month === thisMonth).reduce((s, i) => s + invoiceDue(i), 0);
 
   let presentCount = 0;
   let absentCount = 0;
@@ -3437,20 +3447,40 @@ function renderReminders() {
       if (student.status !== "active") return false;
       if (dueYearFilter !== "all" && student.year !== dueYearFilter) return false;
       if (dueSubjectFilter !== "all" && !studentInCourse(student, dueSubjectFilter)) return false;
-      return studentTotalDue(student.id) > 0;
+      return monthDue(student.id, thisMonth) > 0;
     })
-    .sort((a, b) => studentTotalDue(b.id) - studentTotalDue(a.id));
+    .sort((a, b) => monthDue(b.id, thisMonth) - monthDue(a.id, thisMonth));
   els.reminderDue.innerHTML = dueStudents.length
     ? dueStudents.map((student) => {
-        const due = studentTotalDue(student.id);
-        return `<button class="fee-student-card" type="button" data-due-student="${student.id}">
-          <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
-          <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
-          <span class="fee-student-balance"><strong class="badge due">Due ${formatMoney(due)}</strong></span>
-        </button>`;
+        const due = monthDue(student.id, thisMonth);
+        const note = state.dueNotes[`${student.id}|${thisMonth}`] || "";
+        return `<div class="due-item">
+          <button class="fee-student-card" type="button" data-due-student="${student.id}">
+            <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
+            <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
+            <span class="fee-student-balance"><strong class="badge due">Due ${formatMoney(due)}</strong></span>
+          </button>
+          <label class="due-note"><span>Note for this month</span><input type="text" maxlength="500" data-due-note="${student.id}" placeholder="Write a note…" value="${escapeHtml(note)}" /></label>
+        </div>`;
       }).join("")
     : emptyState("No dues match this filter.");
   els.reminderDue.querySelectorAll("[data-due-student]").forEach((button) => button.addEventListener("click", () => openFeeDetail(button.dataset.dueStudent, true)));
+  els.reminderDue.querySelectorAll("[data-due-note]").forEach((input) => input.addEventListener("change", () => saveDueNote(input.dataset.dueNote, thisMonth, input.value)));
+}
+
+async function saveDueNote(studentId, month, note) {
+  const key = `${studentId}|${month}`;
+  if ((state.dueNotes[key] || "") === note) return;
+  try {
+    const { error } = await sb.rpc("set_due_note", { p_student: studentId, p_month: `${month}-01`, p_note: note });
+    if (error) throw error;
+  } catch (err) {
+    fail(err);
+    return;
+  }
+  if (note) state.dueNotes[key] = note;
+  else delete state.dueNotes[key];
+  toast("Note saved");
 }
 
 els.dueSubjectFilter.addEventListener("change", () => {

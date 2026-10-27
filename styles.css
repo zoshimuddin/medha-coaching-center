@@ -2543,12 +2543,23 @@ html, body { overflow-x: clip; }
 }
 
 @media (max-width: 420px) {
-  .home-finance-highlight { grid-template-columns: 1fr; }
-  .home-periods { grid-template-columns: 1fr; }
-  .home-periods > div + div { border-left: 0; border-top: 1px solid var(--line); padding-top: 8px; }
-  .fee-stats-bar { grid-template-columns: 1fr 1fr; }
-  .money-today-grid { grid-template-columns: 1fr 1fr; }
-  .home-card strong { font-size: 16px; }
+  /* Keep the home highlights side by side (Total due | Total collection,
+     Today | This month | This year) — shrink text instead of stacking. */
+  .home-card { padding: 10px 8px; gap: 4px; }
+  .home-card strong { font-size: 15px; }
+  .home-card span { font-size: 11px; }
+  .home-card-icon svg { width: 18px; height: 18px; }
+  .home-periods { gap: 6px; }
+  .fee-stats-bar { gap: 6px; }
+  .money-today-grid { gap: 6px; }
+  .fee-stats-bar strong,
+  .money-today-grid strong { font-size: 13.5px; }
+}
+
+@media (max-width: 360px) {
+  .home-card strong { font-size: 14px; }
+  .home-card span { font-size: 10.5px; }
+  .home-card-icon svg { width: 16px; height: 16px; }
 }
 
 /* ---------- courses: top three + scrollable rest ---------- */
@@ -2810,6 +2821,47 @@ input[readonly] { background: #eef2f7; color: var(--muted); }
   font-variant-numeric: tabular-nums;
   min-width: 44px;
   text-align: right;
+}
+
+/* ---------- due notes (Reminders + fee detail) ---------- */
+
+.due-item {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.due-item .fee-student-card {
+  border: 0;
+  padding: 2px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.due-note { display: grid; gap: 4px; }
+
+.due-note span {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.due-note input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.due-note input:focus {
+  outline: 2px solid var(--accent-soft);
+  border-color: var(--accent);
 }
 
 /* ---------- attendance year cards + drill-down pages ---------- */

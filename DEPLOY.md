@@ -48,9 +48,12 @@ same live database e thake. localStorage ar nei.
 13. Run `supabase/20261019_attendance_subject_flow.sql` — the new
     year → subject attendance flow: any staff member can take attendance with a
     date-wise history. Subjects no longer need a weekly Schedule row.
-14. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+14. Run `supabase/20261020_due_notes.sql` — per-month due notes shown in the
+    Reminder tab and the fee detail page; the note clears automatically when
+    that month is fully paid.
+15. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
     off if users should be created without email confirmation.
-15. Create the owner account in **Authentication > Users > Add user** and copy
+16. Create the owner account in **Authentication > Users > Add user** and copy
     its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -60,7 +63,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-16. Onno user ra ekhon **Settings > User management** thekei banano jabe
+17. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function
