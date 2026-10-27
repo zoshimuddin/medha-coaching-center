@@ -283,11 +283,11 @@ let editingCourseId = null;
 let editingOfferingId = null;
 let editingUserId = null;
 let currentUser = null;
-let activeSession = { sessionId: null, courseId: "", year: "", marks: new Map() };
 let logoPicked = null;
 let studentStatusFilter = "active";
-let attendanceYear = "1st year";
-let attendanceCourseId = "";
+let attStack = [];
+let dueYearFilter = "all";
+let dueSubjectFilter = "all";
 let editingReceiptId = null;
 let currentFeeStudentId = null;
 let lastReceipt = null;
@@ -308,7 +308,6 @@ function renderToday() {
   });
 }
 renderToday();
-els.attendanceDate.value = today;
 els.moneyDate.value = today;
 els.dueDate.value = today;
 els.bankDate.value = today;
@@ -776,6 +775,10 @@ function initHistoryNav() {
       els.dueListPage.hidden = true;
       return;
     }
+    if (!els.attPage.hidden && st.ccm !== "att") {
+      attReset();
+      return;
+    }
     // Traveling into a saved detail entry re-opens that page without new history.
     if (st.ccm === "student-detail") {
       els.studentDetailPage.hidden = false;
@@ -791,6 +794,14 @@ function initHistoryNav() {
     if (st.ccm === "due-list") {
       els.dueListPage.hidden = false;
       openDueList();
+      return;
+    }
+    if (st.ccm === "att") {
+      if (currentRoute !== "attendance") { attReset(); return; }
+      attStack = attStack.slice(0, st.depth || 0);
+      if (!attStack.length) { els.attPage.hidden = true; return; }
+      els.attPage.hidden = false;
+      renderAttPage();
       return;
     }
     // A saved app entry returns to that section.
@@ -897,7 +908,8 @@ function switchView(viewId, title, updateHistory = true) {
     if (st.ccm === "app") setAppState({ ccm: "app", view: viewId }, "replaceState");
     else setAppState({ ccm: "app", view: viewId }, "pushState");
   }
-  if (viewId === "attendance") renderAttendanceView();
+  if (viewId === "attendance") attReset();
+  if (viewId === "reminders") renderReminders();
 }
 
 document.querySelectorAll(".nav-tab, #mobileBottomNav button").forEach((tab) => {
@@ -1876,151 +1888,213 @@ function renderOfferings() {
 
 /* ================= attendance ================= */
 
-els.attendanceDate.addEventListener("change", () => {
-  if (attendanceCourseId) openSubjectAttendance(attendanceCourseId, attendanceYear, els.attendanceDate.value || today);
-});
+// Attendance is a stack of full pages (year -> subject -> roster, and
+// history year -> subject -> dates -> a single date). attPage is the overlay.
+function attReset() {
+  attStack = [];
+  els.attPage.hidden = true;
+}
 
-// Subjects a year has students in (direct enrollments + package subjects).
-// Server-side so teachers/accountants who do not load the student list still
-// see the subjects.
-async function renderAttendanceView() {
-  if (!canView("attendance")) return;
-  els.attendanceYearBtns.innerHTML = ["1st year", "2nd year"].map((year) =>
-    `<button type="button" class="year-chip${attendanceYear === year ? " active" : ""}" data-att-year="${year}" aria-pressed="${attendanceYear === year}">${yearLabel(year)}</button>`
+function attTop() { return attStack[attStack.length - 1]; }
+
+function attOpen(frame) {
+  attStack.push(frame);
+  els.attPage.hidden = false;
+  pushDetailState({ ccm: "att", depth: attStack.length });
+  renderAttPage();
+}
+
+function attYearChips(current) {
+  return ["1st year", "2nd year"].map((y) =>
+    `<button type="button" class="year-chip${current === y ? " active" : ""}" data-att-year="${y}" aria-pressed="${current === y}">${yearLabel(y)}</button>`
   ).join("");
-  els.attendanceYearBtns.querySelectorAll("[data-att-year]").forEach((button) =>
-    button.addEventListener("click", () => {
-      attendanceYear = button.dataset.attYear;
-      attendanceCourseId = "";
-      activeSession = { sessionId: null, courseId: "", year: attendanceYear, marks: new Map() };
-      els.rosterPanel.hidden = true;
-      renderAttendanceView();
-    }));
-
-  if (currentRoute !== "attendance") return;
-  const { data, error } = await sb.rpc("attendance_year_subjects", { p_year: attendanceYear });
-  const subjects = !error && Array.isArray(data) ? data : [];
-  const cards = subjects.length
-    ? subjects.map((row) => `<button type="button" class="class-btn${row.courseId === attendanceCourseId ? " active" : ""}" data-att-course="${row.courseId}"><span>${escapeHtml(row.name)}</span><span class="badge">${toNum(row.count)}</span></button>`).join("")
-    : emptyState("No subjects have students in this year yet.");
-  els.attendanceSubjects.innerHTML = cards;
-  els.attendanceHistorySubjects.innerHTML = cards;
-  const pickSubject = (button) => {
-    attendanceCourseId = button.dataset.attCourse;
-    renderAttendanceView();
-    if (!els.attendanceDate.value) els.attendanceDate.value = today;
-    openSubjectAttendance(attendanceCourseId, attendanceYear, els.attendanceDate.value);
-  };
-  els.attendanceSubjects.querySelectorAll("[data-att-course]").forEach((button) => button.addEventListener("click", () => pickSubject(button)));
-  els.attendanceHistorySubjects.querySelectorAll("[data-att-course]").forEach((button) => button.addEventListener("click", () => pickSubject(button)));
-  renderAttendanceDays();
 }
 
-async function renderAttendanceDays() {
-  if (!attendanceCourseId) { els.attendanceDays.innerHTML = emptyState("Pick a subject to see its history."); return; }
-  const { data, error } = await sb.rpc("subject_attendance_days", { p_course: attendanceCourseId, p_year: attendanceYear });
-  if (error) { fail(error); return; }
-  const days = Array.isArray(data) ? data : [];
-  els.attendanceDays.innerHTML = days.length
-    ? days.map((day) => `<button type="button" class="attendance-day" data-att-date="${day.date}"><strong>${escapeHtml(day.date)}</strong><span class="badge ${day.status === "held" ? "paid" : ""}">${day.status === "held" ? t("held") : "Saved"}</span><span>${t("present")} ${toNum(day.present)} · ${t("absent")} ${toNum(day.absent)}</span></button>`).join("")
-    : emptyState("No saved attendance for this subject yet.");
-  els.attendanceDays.querySelectorAll("[data-att-date]").forEach((button) =>
-    button.addEventListener("click", () => {
-      els.attendanceDate.value = button.dataset.attDate;
-      openSubjectAttendance(attendanceCourseId, attendanceYear, button.dataset.attDate);
-    }));
+async function attOpenSubjects(year, mode) {
+  const frame = { kind: "subjects", year, mode, subjects: null };
+  attOpen(frame);
+  await attLoadSubjects(frame);
 }
 
-async function openSubjectAttendance(courseId, year, date) {
+async function attLoadSubjects(frame) {
+  const { data, error } = await sb.rpc("attendance_year_subjects", { p_year: frame.year });
+  frame.subjects = !error && Array.isArray(data) ? data : [];
+  if (error) fail(error);
+  renderAttPage();
+}
+
+async function attOpenRoster(year, courseId, date) {
+  const frame = { kind: "roster", year, courseId, date, roster: null, marks: new Map(), sessionId: null, saved: false };
+  attOpen(frame);
+  await attLoadRoster(frame);
+}
+
+async function attLoadRoster(frame) {
+  try {
+    const { data, error } = await sb.rpc("attendance_subject_sheet", { p_course: frame.courseId, p_year: frame.year, p_date: frame.date });
+    if (error) throw error;
+    frame.sessionId = data?.sessionId || null;
+    frame.roster = data?.students || [];
+    frame.marks = new Map();
+    frame.roster.forEach((r) => { if (r.attendance) frame.marks.set(r.id, r.attendance); });
+  } catch (err) {
+    fail(err);
+    frame.roster = [];
+  }
+  renderAttPage();
+}
+
+async function attOpenDays(year, courseId) {
+  const frame = { kind: "days", year, courseId, days: null };
+  attOpen(frame);
+  const { data, error } = await sb.rpc("subject_attendance_days", { p_course: courseId, p_year: year });
+  frame.days = !error && Array.isArray(data) ? data : [];
+  if (error) fail(error);
+  renderAttPage();
+}
+
+async function attOpenDay(year, courseId, date) {
+  const frame = { kind: "day", year, courseId, date, roster: null };
+  attOpen(frame);
   try {
     const { data, error } = await sb.rpc("attendance_subject_sheet", { p_course: courseId, p_year: year, p_date: date });
     if (error) throw error;
-    const students = data?.students || [];
-    activeSession = { sessionId: data?.sessionId || null, courseId, year, marks: new Map() };
-    students.forEach((row) => { if (row.attendance) activeSession.marks.set(row.id, row.attendance); });
-    els.rosterHeldBadge.textContent = data?.held ? t("held") : "";
-    els.rosterHeldBadge.className = "badge " + (data?.held ? "paid" : "");
-    els.rosterTitle.textContent = `${getCourseName(courseId)} · ${yearLabel(year)} · ${date}`;
-    els.attendanceHistoryNote.hidden = date === today;
-    els.rosterPanel.hidden = false;
-    renderRoster(students);
+    frame.roster = data?.students || [];
   } catch (err) {
     fail(err);
+    frame.roster = [];
+  }
+  renderAttPage();
+}
+
+function attRosterHtml(frame, readOnly = false) {
+  if (!frame.roster || !frame.roster.length) return emptyState(t("emptyRoster"));
+  return frame.roster.map((r) => {
+    const status = frame.marks?.get(r.id) || r.attendance || "";
+    const calls = [
+      r.phone ? `<a class="contact-link call" href="tel:${escapeHtml(r.phone)}" aria-label="Call ${escapeHtml(r.name)}">${SVG_ICONS.call}</a>` : "",
+      r.guardian_phone ? `<a class="contact-link guardian" href="tel:${escapeHtml(r.guardian_phone)}" aria-label="Call guardian of ${escapeHtml(r.name)}">${SVG_ICONS.family}</a>` : "",
+    ].filter(Boolean).join("");
+    const tools = readOnly
+      ? `<span class="badge ${status === "present" ? "paid" : status === "absent" ? "due" : ""}">${status === "present" ? t("present") : status === "absent" ? t("absent") : t("notMarked")}</span>`
+      : `<div class="inline-tools att-mark">
+           <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
+           <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
+         </div>`;
+    return `<article class="attendance-row">
+      <div class="student-card-main">
+        <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
+        <div class="student-card-copy">
+          <strong>${escapeHtml(r.name)}</strong>
+          <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))}${r.group && r.group !== t("dash") ? " · " + escapeHtml(r.group) : ""}${r.college ? " · " + escapeHtml(r.college) : ""}</span>
+          ${r.phone ? `<span translate="no">${escapeHtml(r.phone)}</span>` : ""}
+        </div>
+        ${calls ? `<div class="attendance-calls">${calls}</div>` : ""}
+        ${tools}
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function renderAttPage() {
+  const frame = attTop();
+  if (!frame) { els.attPage.hidden = true; return; }
+  els.attPage.hidden = false;
+  const body = els.attPageBody;
+
+  if (frame.kind === "subjects") {
+    els.attPageTitle.textContent = `${yearLabel(frame.year)} · ${frame.mode === "history" ? "History" : "Attendance"}`;
+    const list = frame.subjects === null
+      ? `<p class="muted-note">Loading subjects…</p>`
+      : frame.subjects.length
+        ? `<div class="class-list">${frame.subjects.map((s) => `<button type="button" class="class-btn" data-att-course="${s.courseId}"><span>${escapeHtml(s.name)}</span><span class="badge">${toNum(s.count)}</span></button>`).join("")}</div>`
+        : emptyState("No subjects have students in this year yet.");
+    body.innerHTML = `<div class="year-chips">${attYearChips(frame.year)}</div><p class="muted-note">${frame.mode === "history" ? "Pick a subject to see its saved dates." : "Pick a subject to take attendance."}</p>${list}`;
+    body.querySelectorAll("[data-att-year]").forEach((btn) => btn.addEventListener("click", async () => {
+      frame.year = btn.dataset.attYear;
+      frame.subjects = null;
+      renderAttPage();
+      await attLoadSubjects(frame);
+    }));
+    body.querySelectorAll("[data-att-course]").forEach((btn) => btn.addEventListener("click", () => {
+      if (frame.mode === "history") attOpenDays(frame.year, btn.dataset.attCourse);
+      else attOpenRoster(frame.year, btn.dataset.attCourse, today);
+    }));
+    return;
+  }
+
+  if (frame.kind === "roster") {
+    els.attPageTitle.textContent = `${getCourseName(frame.courseId)} · ${yearLabel(frame.year)}`;
+    if (frame.roster === null) { body.innerHTML = `<p class="muted-note">Loading roster…</p>`; return; }
+    const saveBtn = `<button type="button" class="primary-btn att-save" data-att-save>${tr("saveAttendance")}</button>`;
+    const banner = frame.saved ? `<div class="att-saved" role="status">✓ Attendance saved</div>` : "";
+    body.innerHTML = `
+      ${banner}
+      <div class="att-toolbar">
+        <label class="att-date"><span>Date</span><input type="date" id="attRosterDate" value="${frame.date}" /></label>
+        ${saveBtn}
+      </div>
+      <div class="attendance-list">${attRosterHtml(frame)}</div>
+      <div class="att-toolbar att-toolbar-bottom">${saveBtn}</div>`;
+    document.getElementById("attRosterDate").addEventListener("change", async (event) => {
+      frame.date = event.target.value || today;
+      frame.saved = false;
+      frame.roster = null;
+      renderAttPage();
+      await attLoadRoster(frame);
+    });
+    body.querySelectorAll("[data-mark]").forEach((b) => b.addEventListener("click", () => {
+      frame.marks.set(b.dataset.mark, b.dataset.status);
+      frame.saved = false;
+      renderAttPage();
+    }));
+    body.querySelectorAll("[data-att-save]").forEach((b) => b.addEventListener("click", () => attSave(frame)));
+    return;
+  }
+
+  if (frame.kind === "days") {
+    els.attPageTitle.textContent = `${getCourseName(frame.courseId)} · ${yearLabel(frame.year)}`;
+    const list = frame.days === null
+      ? `<p class="muted-note">Loading…</p>`
+      : frame.days.length
+        ? `<div class="attendance-days">${frame.days.map((d) => `<button type="button" class="attendance-day" data-att-date="${d.date}"><strong>${escapeHtml(d.date)}</strong><span class="badge paid">${t("present")} ${toNum(d.present)}</span><span>${t("absent")} ${toNum(d.absent)}</span></button>`).join("")}</div>`
+        : emptyState("No saved attendance for this subject yet.");
+    body.innerHTML = `<p class="muted-note">Date-wise history — tap a date to open it.</p>${list}`;
+    body.querySelectorAll("[data-att-date]").forEach((btn) => btn.addEventListener("click", () => attOpenDay(frame.year, frame.courseId, btn.dataset.attDate)));
+    return;
+  }
+
+  if (frame.kind === "day") {
+    els.attPageTitle.textContent = `${getCourseName(frame.courseId)} · ${frame.date}`;
+    body.innerHTML = frame.roster === null
+      ? `<p class="muted-note">Loading…</p>`
+      : `<div class="attendance-list">${attRosterHtml(frame, true)}</div>`;
+    return;
   }
 }
 
-function renderRoster(roster) {
-  // Any staff member can take/edit attendance, for any date.
-  els.attendanceActions.style.display = "";
-  els.rosterPanel.dataset.roster = JSON.stringify(roster);
-  els.rosterCountBadge.hidden = roster.length === 0;
-  els.rosterCountBadge.textContent = `${roster.length} students`;
-  els.attendanceRoster.innerHTML = roster.length
-    ? roster.map((r) => {
-        const status = activeSession.marks.get(r.id) || "";
-        const calls = [
-          r.phone ? `<a class="contact-link call" href="tel:${escapeHtml(r.phone)}" aria-label="Call ${escapeHtml(r.name)}">${SVG_ICONS.call}</a>` : "",
-          r.guardian_phone ? `<a class="contact-link guardian" href="tel:${escapeHtml(r.guardian_phone)}" aria-label="Call guardian of ${escapeHtml(r.name)}">${SVG_ICONS.family}</a>` : "",
-        ].filter(Boolean).join("");
-        return `
-        <article class="attendance-row">
-          <div class="student-card-main">
-            <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
-            <div class="student-card-copy">
-              <strong>${escapeHtml(r.name)}</strong>
-              <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))}${r.group && r.group !== t("dash") ? " · " + escapeHtml(r.group) : ""}${r.college ? " · " + escapeHtml(r.college) : ""}</span>
-              ${r.phone ? `<span translate="no">${escapeHtml(r.phone)}</span>` : ""}
-              ${r.address ? `<span>${escapeHtml(r.address)}</span>` : ""}
-            </div>
-            ${calls ? `<div class="attendance-calls">${calls}</div>` : ""}
-            <div class="inline-tools">
-              <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
-              <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
-            </div>
-          </div>
-        </article>`;
-      }).join("")
-    : emptyState(t("emptyRoster"));
-
-  document.querySelectorAll("[data-mark]").forEach((b) =>
-    b.addEventListener("click", () => {
-      activeSession.marks.set(b.dataset.mark, b.dataset.status);
-      renderRoster(roster);
-    }));
-}
-
-els.markAllPresentBtn.addEventListener("click", () => {
-  const roster = JSON.parse(els.rosterPanel.dataset.roster || "[]");
-  roster.forEach((r) => activeSession.marks.set(r.id, "present"));
-  renderRoster(roster);
-});
-
-els.saveAttendanceBtn.addEventListener("click", async () => {
-  if (!activeSession.sessionId) { toast(t("msgPickClass")); return; }
-  const roster = JSON.parse(els.rosterPanel.dataset.roster || "[]");
-  const records = roster
-    .filter((r) => activeSession.marks.get(r.id))
-    .map((r) => ({ student_id: r.id, status: activeSession.marks.get(r.id) }));
+async function attSave(frame) {
+  if (!frame.sessionId) { toast(t("msgPickClass")); return; }
+  const records = frame.roster.filter((r) => frame.marks.get(r.id)).map((r) => ({ student_id: r.id, status: frame.marks.get(r.id) }));
   if (!records.length) { toast(t("msgNoChanges")); return; }
-  const courseId = activeSession.courseId;
-  const year = activeSession.year;
-  const date = els.attendanceDate.value || today;
   try {
-    const { error } = await sb.rpc("mark_subject_attendance", {
-      p_session: activeSession.sessionId,
-      p_records: records,
-      p_held: true,
-    });
+    const { error } = await sb.rpc("mark_subject_attendance", { p_session: frame.sessionId, p_records: records, p_held: true });
     if (error) throw error;
   } catch (err) {
     fail(err);
     return;
   }
-  toast(t("tAttendanceSaved"));
-  logActivity("Attendance", `${getCourseName(courseId)} · ${year} — ${records.length}`);
-  await openSubjectAttendance(courseId, year, date);
-  await renderAttendanceDays();
-});
+  frame.saved = true;
+  toast("✓ Attendance saved");
+  logActivity("Attendance", `${getCourseName(frame.courseId)} · ${frame.year} — ${records.length}`);
+  renderAttPage();
+}
+
+document.querySelectorAll("[data-att-start]").forEach((button) =>
+  button.addEventListener("click", () => attOpenSubjects(button.dataset.attStart, "take")));
+document.querySelectorAll("[data-att-history]").forEach((button) =>
+  button.addEventListener("click", () => attOpenSubjects(button.dataset.attHistory, "history")));
+els.attBackBtn.addEventListener("click", () => history.back());
 
 /* ================= fees ================= */
 
@@ -3365,52 +3439,80 @@ function saveDismissedReminders(set) {
 }
 
 function renderReminders() {
-  if (!canView("reminders")) { els.reminderRows.innerHTML = emptyState("No permission to view reminders."); return; }
+  if (!canView("reminders")) {
+    els.reminderBirthdays.innerHTML = emptyState("No permission to view reminders.");
+    els.reminderDue.innerHTML = emptyState("No permission to view reminders.");
+    return;
+  }
   els.reminderDateLabel.textContent = new Date().toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
   const dismissed = loadDismissedReminders();
   const monthDay = today.slice(5);
   const [year, month] = today.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const leapYear = new Date(year, 1, 29).getMonth() === 1;
-  const reminders = [];
-  for (const student of state.students.filter((s) => s.status === "active")) {
-    const due = studentTotalDue(student.id);
-    const birthday = student.birthday?.slice(5);
-    const anniversaryToday = student.admissionDate ? Math.min(Number(student.admissionDate.slice(8, 10)), lastDay) === Number(today.slice(8, 10)) : false;
-    if (birthday === monthDay || (!leapYear && monthDay === "02-28" && birthday === "02-29")) {
-      reminders.push({ student, kind: "Birthday", amount: 0, daily: false });
-    }
-    if (anniversaryToday) {
-      reminders.push({ student, kind: "Monthly fee due", amount: due, daily: false });
-    } else if (due > 0) {
-      reminders.push({ student, kind: "Fee due", amount: due, daily: true });
-    }
-  }
-  // Birthdays always come first, then payment reminders.
-  const visible = reminders
-    .filter((item) => !dismissed.has(`${item.student.id}|${item.kind}`))
-    .sort((a, b) => (a.kind === "Birthday" ? 0 : 1) - (b.kind === "Birthday" ? 0 : 1));
-  els.reminderRows.innerHTML = visible.length ? visible.map((item) => {
-    const key = `${item.student.id}|${item.kind}`;
-    const amountLine = item.amount > 0 ? `<span class="badge due">${t("due")} ${formatMoney(item.amount)}</span>` : "";
-    return `<article class="reminder-card ${item.kind === "Birthday" ? "reminder-birthday" : "reminder-due"}">
-      <div class="student-avatar" aria-hidden="true">${escapeHtml(item.student.name.charAt(0).toUpperCase())}</div>
-      <div class="reminder-copy">
-        <strong>${escapeHtml(item.student.name)}</strong>
-        <span><span translate="no">${escapeHtml(item.student.studentNumber || "")}</span> · ${escapeHtml(yearLabel(item.student.year))}</span>
-      </div>
-      <span class="badge ${item.kind === "Birthday" ? "paid" : "due"}">${item.kind}</span>
-      ${amountLine}
-      <button type="button" class="reminder-clear" data-dismiss-reminder="${escapeHtml(key)}" aria-label="Clear reminder for ${escapeHtml(item.student.name)}">✕</button>
-    </article>`;
-  }).join("") : emptyState("No birthdays or fee reminders today.");
-  els.reminderRows.querySelectorAll("[data-dismiss-reminder]").forEach((button) => button.addEventListener("click", () => {
+
+  // Birthdays today (dismissible).
+  const birthdays = state.students
+    .filter((student) => {
+      if (student.status !== "active") return false;
+      const birthday = student.birthday?.slice(5);
+      return birthday === monthDay || (!leapYear && monthDay === "02-28" && birthday === "02-29");
+    })
+    .filter((student) => !dismissed.has(`${student.id}|Birthday`));
+  els.reminderBirthdays.innerHTML = birthdays.length
+    ? birthdays.map((student) => `<article class="reminder-card reminder-birthday">
+        <div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div>
+        <div class="reminder-copy"><strong>${escapeHtml(student.name)}</strong><span><span translate="no">${escapeHtml(student.studentNumber || "")}</span> · ${escapeHtml(yearLabel(student.year))}</span></div>
+        <span class="badge paid">Birthday</span>
+        <button type="button" class="reminder-clear" data-dismiss-reminder="${escapeHtml(`${student.id}|Birthday`)}" aria-label="Clear reminder for ${escapeHtml(student.name)}">✕</button>
+      </article>`).join("")
+    : emptyState("No birthdays today.");
+  els.reminderBirthdays.querySelectorAll("[data-dismiss-reminder]").forEach((button) => button.addEventListener("click", () => {
     const set = loadDismissedReminders();
     set.add(button.dataset.dismissReminder);
     saveDismissedReminders(set);
     renderReminders();
   }));
+
+  // Fee due, filtered by year and subject.
+  els.dueYearBtns.innerHTML = [["all", "All years"], ["1st year", "1st year"], ["2nd year", "2nd year"]]
+    .map(([value, label]) => `<button type="button" class="year-chip${dueYearFilter === value ? " active" : ""}" data-due-year="${value}" aria-pressed="${dueYearFilter === value}">${label}</button>`)
+    .join("");
+  els.dueYearBtns.querySelectorAll("[data-due-year]").forEach((button) => button.addEventListener("click", () => {
+    dueYearFilter = button.dataset.dueYear;
+    renderReminders();
+  }));
+
+  const subjects = state.courses.filter((course) => course.type === "subject").sort((a, b) => a.name.localeCompare(b.name));
+  if (dueSubjectFilter !== "all" && !subjects.some((course) => course.id === dueSubjectFilter)) dueSubjectFilter = "all";
+  els.dueSubjectFilter.innerHTML = [`<option value="all">All subjects</option>`, ...subjects.map((course) => `<option value="${course.id}">${escapeHtml(course.name)}</option>`)].join("");
+  els.dueSubjectFilter.value = dueSubjectFilter;
+
+  const dueStudents = state.students
+    .filter((student) => {
+      if (student.status !== "active") return false;
+      if (dueYearFilter !== "all" && student.year !== dueYearFilter) return false;
+      if (dueSubjectFilter !== "all" && !studentInCourse(student, dueSubjectFilter)) return false;
+      return studentTotalDue(student.id) > 0;
+    })
+    .sort((a, b) => studentTotalDue(b.id) - studentTotalDue(a.id));
+  els.reminderDue.innerHTML = dueStudents.length
+    ? dueStudents.map((student) => {
+        const due = studentTotalDue(student.id);
+        return `<button class="fee-student-card" type="button" data-due-student="${student.id}">
+          <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
+          <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
+          <span class="fee-student-balance"><strong class="badge due">Due ${formatMoney(due)}</strong></span>
+        </button>`;
+      }).join("")
+    : emptyState("No dues match this filter.");
+  els.reminderDue.querySelectorAll("[data-due-student]").forEach((button) => button.addEventListener("click", () => openFeeDetail(button.dataset.dueStudent, true)));
 }
+
+els.dueSubjectFilter.addEventListener("change", () => {
+  dueSubjectFilter = els.dueSubjectFilter.value;
+  renderReminders();
+});
 
 function donutChart(segments, centerValue, centerCaption, fmt) {
   const format = fmt || formatMoney;
@@ -3663,7 +3765,6 @@ function renderAll() {
   renderCourses();
   renderCourseSubjectsBox(els.courseSubjectsWrap.hidden ? [] : selectedCourseSubjects());
   renderOfferings();
-  renderAttendanceView();
   renderFees();
   renderMoney();
   renderBank();

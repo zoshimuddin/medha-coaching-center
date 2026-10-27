@@ -160,8 +160,16 @@
 
           <section id="reminders" class="view">
             <section class="panel">
-              <div class="panel-header"><div><h3>Today’s reminders</h3><p class="muted-note" id="reminderDateLabel"></p></div></div>
-              <div id="reminderRows" class="reminder-list" aria-live="polite"></div>
+              <div class="panel-header"><div><h3>Birthdays</h3><p class="muted-note" id="reminderDateLabel"></p></div></div>
+              <div id="reminderBirthdays" class="reminder-list" aria-live="polite"></div>
+            </section>
+            <section class="panel panel-gap">
+              <div class="panel-header"><h3>Fee due</h3></div>
+              <div id="dueYearBtns" class="year-chips" role="group" aria-label="Filter due by year"></div>
+              <div class="inline-tools filter-tools panel-gap">
+                <select id="dueSubjectFilter" aria-label="Filter due by subject"></select>
+              </div>
+              <div id="reminderDue" class="fee-student-list panel-gap" aria-live="polite"></div>
             </section>
           </section>
 
@@ -437,34 +445,29 @@
           <!-- ============ ATTENDANCE ============ -->
           <section id="attendance" class="view">
             <section class="panel">
-              <div class="panel-header attendance-tools">
-                <h3 data-i18n="takeAttendance">Attendance</h3>
-                <div class="inline-tools attendance-filters">
-                  <input id="attendanceDate" type="date" aria-label="Date" />
-                </div>
+              <div class="panel-header"><h3 data-i18n="takeAttendance">Attendance</h3></div>
+              <p class="muted-note">Pick a year, then a subject, then mark present/absent.</p>
+              <div class="year-cards">
+                <button type="button" class="year-card" data-att-start="1st year"><strong>1st year</strong><span>Take attendance →</span></button>
+                <button type="button" class="year-card" data-att-start="2nd year"><strong>2nd year</strong><span>Take attendance →</span></button>
               </div>
-              <div id="attendanceYearBtns" class="year-chips" role="group" aria-label="Select year"></div>
-              <p class="muted-note">Pick a year, then a subject, then mark the students.</p>
-              <div id="attendanceSubjects" class="class-list" aria-label="Subjects"></div>
-            </section>
-            <section class="panel panel-gap" id="rosterPanel" hidden>
-              <div class="panel-header">
-                <h3 id="rosterTitle">Roster</h3>
-                <span id="rosterCountBadge" class="badge" hidden></span>
-                <span id="rosterHeldBadge" class="badge"></span>
-              </div>
-              <p id="attendanceHistoryNote" class="muted-note" hidden>Viewing a past date — editing the saved attendance below.</p>
-              <div id="attendanceActions" class="attendance-actions">
-                <button id="markAllPresentBtn" class="secondary-btn" type="button" data-i18n="markAllPresent">Mark all present</button>
-                <button id="saveAttendanceBtn" class="primary-btn" type="button" data-i18n="saveAttendance">Save attendance</button>
-              </div>
-              <div id="attendanceRoster" class="attendance-list"></div>
             </section>
             <section class="panel panel-gap">
               <div class="panel-header"><h3>Attendance history</h3></div>
-              <div id="attendanceHistorySubjects" class="class-list" aria-label="History subjects"></div>
-              <div id="attendanceDays" class="attendance-days panel-gap"></div>
+              <p class="muted-note">Pick a year, then a subject, then a date.</p>
+              <div class="year-cards">
+                <button type="button" class="year-card" data-att-history="1st year"><strong>1st year</strong><span>View history →</span></button>
+                <button type="button" class="year-card" data-att-history="2nd year"><strong>2nd year</strong><span>View history →</span></button>
+              </div>
             </section>
+
+            <div id="attPage" class="page-overlay" hidden>
+              <header class="detail-header">
+                <button id="attBackBtn" class="detail-back" type="button" aria-label="Back">←</button>
+                <h3 id="attPageTitle">Attendance</h3>
+              </header>
+              <div id="attPageBody" class="fee-detail-page-body"></div>
+            </div>
           </section>
 
           <section id="fees" class="view">
