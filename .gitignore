@@ -2,3 +2,4 @@
 .env
 .commandcode/
 hostinger-deploy/
+supabase/.temp/
