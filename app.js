@@ -1953,10 +1953,18 @@ async function attOpenDay(year, courseId, date) {
   renderAttPage();
 }
 
+// Months (YYYY-MM) this student still owes; empty when fully paid.
+function attUnpaidMonths(r) {
+  const list = Array.isArray(r.dueMonths) ? r.dueMonths.map(String) : [];
+  const unique = [...new Set(list)];
+  if (unique.length) return unique;
+  return Number(r.due || 0) > 0 ? [thisMonth] : [];
+}
+
 function attHistoryRank(r) {
   // History order: present+unpaid, absent+unpaid, present+paid, then the rest.
   const status = r.attendance || "";
-  const paid = !(Number(r.due || 0) > 0);
+  const paid = attUnpaidMonths(r).length === 0;
   if (status === "present") return paid ? 3 : 1;
   if (status === "absent") return paid ? 4 : 2;
   return 5;
@@ -1979,9 +1987,9 @@ function attRosterHtml(frame, readOnly = false) {
            <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
            <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
          </div>`;
-    const unpaid = Number(r.due || 0) > 0;
-    const unpaidMonth = monthShortLabel(r.dueMonth, true) || monthShortLabel(thisMonth, true);
-    const payBadge = `<span class="badge pay-badge ${unpaid ? "is-unpaid" : "is-paid"}">${unpaid ? `Unpaid · ${unpaidMonth}` : "Paid"}</span>`;
+    const months = attUnpaidMonths(r);
+    const unpaid = months.length > 0;
+    const payBadge = `<span class="badge pay-badge ${unpaid ? "is-unpaid" : "is-paid"}">${unpaid ? `Unpaid · ${months.slice(0, 3).map((m) => monthShortLabel(m)).join(", ")}` : "Paid"}</span>`;
     return `<article class="attendance-row">
       <div class="student-card-main">
         <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
@@ -2155,7 +2163,7 @@ function renderFees() {
         const due = monthDue(student.id, month);
         const discount = invoicesFor(student.id, month).reduce((sum, invoice) => sum + (invoice.discount || 0), 0);
         const badge = due > 0
-          ? { cls: "badge pay-badge is-unpaid", text: `Unpaid ${formatMoney(due)} · ${monthShortLabel(month)}` }
+          ? { cls: "badge pay-badge is-unpaid", text: `Unpaid · ${monthShortLabel(month)}` }
           : discount > 0
             ? { cls: "badge paid", text: "Discounted" }
             : { cls: "badge pay-badge is-paid", text: "Paid" };
