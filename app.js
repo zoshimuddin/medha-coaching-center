@@ -1959,11 +1959,16 @@ function attRosterHtml(frame, readOnly = false) {
            <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
            <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
          </div>`;
+    const payBadge = (() => {
+      const paid = Number(r.due || 0) <= 0;
+      return `<span class="badge att-pay ${paid ? "is-paid" : "is-unpaid"}">${paid ? "Paid" : "Unpaid"}</span>`;
+    })();
     return `<article class="attendance-row">
       <div class="student-card-main">
         <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
         <div class="student-card-copy">
           <strong>${escapeHtml(r.name)}</strong>
+          ${payBadge}
           <span><span translate="no">${escapeHtml(r.studentNumber || "")}</span> · ${escapeHtml(yearLabel(r.year))}${r.group && r.group !== t("dash") ? " · " + escapeHtml(r.group) : ""}${r.college ? " · " + escapeHtml(r.college) : ""}</span>
           ${r.phone ? `<span translate="no">${escapeHtml(r.phone)}</span>` : ""}
         </div>

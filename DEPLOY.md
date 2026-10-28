@@ -51,9 +51,11 @@ same live database e thake. localStorage ar nei.
 14. Run `supabase/20261020_due_notes.sql` — per-month due notes shown in the
     Reminder tab and the fee detail page; the note clears automatically when
     that month is fully paid.
-15. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+15. Run `supabase/20261021_attendance_paid.sql` — attendance roster cards show
+    a Paid/Unpaid badge (this month's fee), in sync with Fees.
+16. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
     off if users should be created without email confirmation.
-16. Create the owner account in **Authentication > Users > Add user** and copy
+17. Create the owner account in **Authentication > Users > Add user** and copy
     its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -63,7 +65,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-17. Onno user ra ekhon **Settings > User management** thekei banano jabe
+18. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function
