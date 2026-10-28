@@ -203,6 +203,14 @@ function yearLabel(year) {
   return year || t("dash");
 }
 
+// "2026-10" -> "Oct" (withYear: "Oct 2026").
+function monthShortLabel(ym, withYear = false) {
+  const [y, m] = String(ym || "").split("-").map(Number);
+  if (!y || !m) return "";
+  const name = new Date(y, m - 1, 1).toLocaleDateString("en-GB", { month: "short" });
+  return withYear ? `${name} ${y}` : name;
+}
+
 function markRequiredStars() {
   // Color the trailing required asterisk red without touching i18n text nodes.
   document.querySelectorAll("label > span").forEach((span) => {
@@ -1945,9 +1953,21 @@ async function attOpenDay(year, courseId, date) {
   renderAttPage();
 }
 
+function attHistoryRank(r) {
+  // History order: present+unpaid, absent+unpaid, present+paid, then the rest.
+  const status = r.attendance || "";
+  const paid = !(Number(r.due || 0) > 0);
+  if (status === "present") return paid ? 3 : 1;
+  if (status === "absent") return paid ? 4 : 2;
+  return 5;
+}
+
 function attRosterHtml(frame, readOnly = false) {
   if (!frame.roster || !frame.roster.length) return emptyState(t("emptyRoster"));
-  return frame.roster.map((r) => {
+  const list = readOnly
+    ? [...frame.roster].sort((a, b) => attHistoryRank(a) - attHistoryRank(b) || String(a.name).localeCompare(String(b.name)))
+    : frame.roster;
+  return list.map((r) => {
     const status = frame.marks?.get(r.id) || r.attendance || "";
     const calls = [
       r.phone ? `<a class="contact-link call" href="tel:${escapeHtml(r.phone)}" aria-label="Call ${escapeHtml(r.name)}">${SVG_ICONS.call}</a>` : "",
@@ -1959,10 +1979,9 @@ function attRosterHtml(frame, readOnly = false) {
            <button class="small-btn ${status === "present" ? "present" : ""}" type="button" data-mark="${r.id}" data-status="present">${t("present")}</button>
            <button class="small-btn ${status === "absent" ? "absent" : ""}" type="button" data-mark="${r.id}" data-status="absent">${t("absent")}</button>
          </div>`;
-    const payBadge = (() => {
-      const paid = Number(r.due || 0) <= 0;
-      return `<span class="badge att-pay ${paid ? "is-paid" : "is-unpaid"}">${paid ? "Paid" : "Unpaid"}</span>`;
-    })();
+    const unpaid = Number(r.due || 0) > 0;
+    const unpaidMonth = monthShortLabel(r.dueMonth, true) || monthShortLabel(thisMonth, true);
+    const payBadge = `<span class="badge pay-badge ${unpaid ? "is-unpaid" : "is-paid"}">${unpaid ? `Unpaid · ${unpaidMonth}` : "Paid"}</span>`;
     return `<article class="attendance-row">
       <div class="student-card-main">
         <div class="student-avatar" aria-hidden="true">${escapeHtml(r.name.charAt(0).toUpperCase())}</div>
@@ -2135,11 +2154,15 @@ function renderFees() {
     ? students.map((student) => {
         const due = monthDue(student.id, month);
         const discount = invoicesFor(student.id, month).reduce((sum, invoice) => sum + (invoice.discount || 0), 0);
-        const badge = due > 0 ? `Due ${formatMoney(due)}` : discount > 0 ? "Discounted" : "Paid";
+        const badge = due > 0
+          ? { cls: "badge pay-badge is-unpaid", text: `Unpaid ${formatMoney(due)} · ${monthShortLabel(month)}` }
+          : discount > 0
+            ? { cls: "badge paid", text: "Discounted" }
+            : { cls: "badge pay-badge is-paid", text: "Paid" };
         return `<button class="fee-student-card" type="button" data-fee-student="${student.id}">
           <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
           <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))}</span></span>
-          <span class="fee-student-balance"><strong class="badge ${due > 0 ? "due" : "paid"}">${badge}</strong></span>
+          <span class="fee-student-balance"><strong class="${badge.cls}">${badge.text}</strong></span>
         </button>`;
       }).join("")
     : emptyState("No active students match this month and search.");
