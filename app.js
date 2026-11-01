@@ -1955,10 +1955,12 @@ async function attOpenDay(year, courseId, date) {
   renderAttPage();
 }
 
-// Months (YYYY-MM) this student still owes, never beyond the running month.
+// Months (YYYY-MM) this student still owes, inside the billing window.
 function attUnpaidMonths(r) {
   if (Array.isArray(r.dueMonths)) {
-    return [...new Set(r.dueMonths.map(String))].filter((month) => month <= thisMonth).sort();
+    return [...new Set(r.dueMonths.map(String))]
+      .filter((month) => month >= "2026-10" && month <= thisMonth)
+      .sort();
   }
   return Number(r.due || 0) > 0 ? [thisMonth] : [];
 }
@@ -2134,14 +2136,22 @@ function invoiceDue(invoice) {
   return Math.max(0, invoice.agreedFee - invoice.paid - (invoice.discount || 0));
 }
 
-// All months this student still owes, oldest first, never beyond the running
-// month (advance months are ignored). Empty when fully paid.
+// Billing starts at October 2026 or the student's admission month, whichever is later.
+function billingStartMonth(student) {
+  const admission = String(student?.admissionDate || "").slice(0, 7);
+  return admission > "2026-10" ? admission : "2026-10";
+}
+
+// All months this student still owes, oldest first, inside the billing window
+// (never before their start month, never beyond the running month).
 function unpaidMonthsFor(studentId) {
+  const student = state.students.find((item) => item.id === studentId);
+  const start = billingStartMonth(student);
   return [...new Set(
     state.invoices
       .filter((invoice) => invoice.studentId === studentId && invoiceDue(invoice) > 0)
       .map((invoice) => invoice.month)
-  )].filter((month) => month <= thisMonth).sort();
+  )].filter((month) => month >= start && month <= thisMonth).sort();
 }
 
 function dueMonthsBadge(months, limit = 3) {
