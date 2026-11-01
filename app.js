@@ -480,6 +480,7 @@ const db = {
       state.students = (data || []).map((r) => ({
         id: r.id, studentNumber: r.studentNumber || "", name: r.name,
         year: r.yearLevel || "", batchId: r.batchId || "", status: r.status || "active",
+        college: r.college || "", phone: r.phone || "",
         enrollments: [],
       }));
       return;
@@ -1954,11 +1955,11 @@ async function attOpenDay(year, courseId, date) {
   renderAttPage();
 }
 
-// Months (YYYY-MM) this student still owes; empty when fully paid.
+// Months (YYYY-MM) this student still owes, never beyond the running month.
 function attUnpaidMonths(r) {
-  const list = Array.isArray(r.dueMonths) ? r.dueMonths.map(String) : [];
-  const unique = [...new Set(list)];
-  if (unique.length) return unique;
+  if (Array.isArray(r.dueMonths)) {
+    return [...new Set(r.dueMonths.map(String))].filter((month) => month <= thisMonth).sort();
+  }
   return Number(r.due || 0) > 0 ? [thisMonth] : [];
 }
 
@@ -2133,13 +2134,14 @@ function invoiceDue(invoice) {
   return Math.max(0, invoice.agreedFee - invoice.paid - (invoice.discount || 0));
 }
 
-// All months this student still owes, oldest first (empty when fully paid).
+// All months this student still owes, oldest first, never beyond the running
+// month (advance months are ignored). Empty when fully paid.
 function unpaidMonthsFor(studentId) {
   return [...new Set(
     state.invoices
       .filter((invoice) => invoice.studentId === studentId && invoiceDue(invoice) > 0)
       .map((invoice) => invoice.month)
-  )].sort();
+  )].filter((month) => month <= thisMonth).sort();
 }
 
 function dueMonthsBadge(months, limit = 3) {
@@ -2167,9 +2169,9 @@ function renderFees() {
   const filter = els.feeFilter.value;
   const query = els.feeSearch.value.trim().toLowerCase();
   const students = state.students.filter((student) => {
-    const months = unpaidMonthsFor(student.id);
-    if (filter === "due" && months.length === 0) return false;
-    if (filter === "paid" && months.length > 0) return false;
+    const due = monthDue(student.id, month);
+    if (filter === "due" && due <= 0) return false;
+    if (filter === "paid" && due > 0) return false;
     return student.status === "active" && feeMatches(student, query);
   });
   els.feeRows.innerHTML = students.length
@@ -2185,7 +2187,7 @@ function renderFees() {
           <div class="fee-card-row">
             <button class="fee-student-card" type="button" data-fee-student="${student.id}">
               <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
-              <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))}</span></span>
+              <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml([getBatchName(student.batchId), student.college].filter(Boolean).join(" · "))}</span></span>
             </button>
             ${phone ? `<a class="contact-link call fee-call" href="tel:${escapeHtml(phone)}" aria-label="Call ${escapeHtml(student.name)}">${SVG_ICONS.call}</a>` : ""}
           </div>
@@ -3511,16 +3513,15 @@ function renderReminders() {
     .sort((a, b) => studentTotalDue(b.student.id) - studentTotalDue(a.student.id));
   els.reminderDue.innerHTML = dueStudents.length
     ? dueStudents.map(({ student, months }) => {
-        const due = studentTotalDue(student.id);
         const note = state.dueNotes[`${student.id}|${thisMonth}`] || "";
         return `<div class="due-item">
           <div class="fee-card-row">
             <button class="fee-student-card" type="button" data-due-student="${student.id}">
               <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
-              <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
+              <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml([yearLabel(student.year), student.college].filter(Boolean).join(" · "))}</span></span>
             </button>
           </div>
-          <div class="fee-badge-row"><strong class="badge pay-badge is-unpaid">Due ${formatMoney(due)} · ${dueMonthsBadge(months)}</strong></div>
+          <div class="fee-badge-row"><strong class="badge pay-badge is-unpaid">Due · ${dueMonthsBadge(months)}</strong></div>
           <label class="due-note"><span>Note for this month</span><input type="text" maxlength="500" data-due-note="${student.id}" placeholder="Write a note…" value="${escapeHtml(note)}" /></label>
         </div>`;
       }).join("")

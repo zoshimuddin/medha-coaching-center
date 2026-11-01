@@ -60,9 +60,11 @@ same live database e thake. localStorage ar nei.
 18. Run `supabase/20261024_fee_backfill.sql` — aligns every enrollment and
     month's invoice with the current course/package fee (fixes students that
     kept an old, higher package price).
-19. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+19. Run `supabase/20261025_fee_roster_college.sql` — the fee-only roster returns
+    college and phone so Reminder/Fees cards show the college and a call button.
+20. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
     off if users should be created without email confirmation.
-20. Create the owner account in **Authentication > Users > Add user** and copy
+21. Create the owner account in **Authentication > Users > Add user** and copy
     its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -72,7 +74,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-21. Onno user ra ekhon **Settings > User management** thekei banano jabe
+22. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function
