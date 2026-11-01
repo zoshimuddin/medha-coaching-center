@@ -914,6 +914,7 @@ function switchView(viewId, title, updateHistory = true) {
   }
   if (viewId === "attendance") attReset();
   if (viewId === "reminders") renderReminders();
+  if (viewId === "fees") renderFees();
 }
 
 document.querySelectorAll(".nav-tab, #mobileBottomNav button").forEach((tab) => {
@@ -2132,6 +2133,19 @@ function invoiceDue(invoice) {
   return Math.max(0, invoice.agreedFee - invoice.paid - (invoice.discount || 0));
 }
 
+// All months this student still owes, oldest first (empty when fully paid).
+function unpaidMonthsFor(studentId) {
+  return [...new Set(
+    state.invoices
+      .filter((invoice) => invoice.studentId === studentId && invoiceDue(invoice) > 0)
+      .map((invoice) => invoice.month)
+  )].sort();
+}
+
+function dueMonthsBadge(months, limit = 3) {
+  return months.slice(0, limit).map((month) => monthShortLabel(month)).join(", ");
+}
+
 function monthDue(studentId, month) {
   return invoicesFor(studentId, month).reduce((sum, invoice) => sum + invoiceDue(invoice), 0);
 }
@@ -2153,28 +2167,35 @@ function renderFees() {
   const filter = els.feeFilter.value;
   const query = els.feeSearch.value.trim().toLowerCase();
   const students = state.students.filter((student) => {
-    const due = monthDue(student.id, month);
-    if (filter === "due" && due <= 0) return false;
-    if (filter === "paid" && due > 0) return false;
+    const months = unpaidMonthsFor(student.id);
+    if (filter === "due" && months.length === 0) return false;
+    if (filter === "paid" && months.length > 0) return false;
     return student.status === "active" && feeMatches(student, query);
   });
   els.feeRows.innerHTML = students.length
     ? students.map((student) => {
-        const due = monthDue(student.id, month);
-        const discount = invoicesFor(student.id, month).reduce((sum, invoice) => sum + (invoice.discount || 0), 0);
-        const badge = due > 0
-          ? { cls: "badge pay-badge is-unpaid", text: `Unpaid · ${monthShortLabel(month)}` }
-          : discount > 0
-            ? { cls: "badge paid", text: "Discounted" }
-            : { cls: "badge pay-badge is-paid", text: "Paid" };
-        return `<button class="fee-student-card" type="button" data-fee-student="${student.id}">
-          <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
-          <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))}</span></span>
-          <span class="fee-student-balance"><strong class="${badge.cls}">${badge.text}</strong></span>
-        </button>`;
+        const months = unpaidMonthsFor(student.id);
+        const isUnpaid = months.length > 0;
+        const badge = isUnpaid
+          ? { cls: "badge pay-badge is-unpaid", text: `Unpaid · ${dueMonthsBadge(months)}` }
+          : { cls: "badge pay-badge is-paid", text: "Paid" };
+        const phone = (student.phone || "").replace(/\D/g, "");
+        const note = state.dueNotes[`${student.id}|${month}`] || "";
+        return `<div class="due-item fee-item">
+          <div class="fee-card-row">
+            <button class="fee-student-card" type="button" data-fee-student="${student.id}">
+              <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
+              <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))}</span></span>
+            </button>
+            ${phone ? `<a class="contact-link call fee-call" href="tel:${escapeHtml(phone)}" aria-label="Call ${escapeHtml(student.name)}">${SVG_ICONS.call}</a>` : ""}
+          </div>
+          <div class="fee-badge-row"><strong class="${badge.cls}">${badge.text}</strong></div>
+          ${isUnpaid ? `<label class="due-note"><span>Note</span><input type="text" maxlength="500" data-fee-note="${student.id}" placeholder="Write a note…" value="${escapeHtml(note)}" /></label>` : ""}
+        </div>`;
       }).join("")
     : emptyState("No active students match this month and search.");
   document.querySelectorAll("[data-fee-student]").forEach((button) => button.addEventListener("click", () => openFeeDetail(button.dataset.feeStudent)));
+  els.feeRows.querySelectorAll("[data-fee-note]").forEach((input) => input.addEventListener("change", () => saveDueNote(input.dataset.feeNote, month, input.value)));
 }
 
 async function openFeeDetail(studentId, push = true) {
@@ -2187,7 +2208,8 @@ async function openFeeDetail(studentId, push = true) {
   const due = monthDue(studentId, month);
   let history = [];
   try {
-    const { data, error } = await sb.rpc("student_fee_history", { p_student: studentId, p_month: `${month}-01` });
+    // p_month = null -> the full history (all months + admission).
+    const { data, error } = await sb.rpc("student_fee_history", { p_student: studentId, p_month: null });
     if (error) throw error;
     history = data || [];
   } catch (err) { fail(err); }
@@ -2207,7 +2229,7 @@ async function openFeeDetail(studentId, push = true) {
   const historyHtml = history.length ? history.map((item) => {
     if (item.kind === "admission") {
       const admissionTools = isAdmin() ? `<div class="receipt-tools"><button type="button" class="small-btn" data-delete-receipt="${escapeHtml(item.receiptId)}">Delete</button></div>` : "";
-      return `<article class="fee-history-item fee-history-admission"><div><strong>Admission fee (ভর্তি ফি) — Paid ${formatMoney(item.paid)}</strong><span>Remaining — · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div>${admissionTools}<button type="button" class="small-btn" data-print-admission-history="${escapeHtml(item.receiptId)}">Print</button></article>`;
+      return `<article class="fee-history-item fee-history-admission"><div><strong>Admission fee (ভর্তি ফি) — Paid ${formatMoney(item.paid)}</strong><span>${monthShortLabel(String(item.month || "").slice(0, 7), true)} · Remaining — · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div>${admissionTools}<button type="button" class="small-btn" data-print-admission-history="${escapeHtml(item.receiptId)}">Print</button></article>`;
     }
     const title = item.kind === "legacy" ? "Legacy payment" : Number(item.paid) > 0 ? `Paid ${formatMoney(item.paid)}` : "Discount";
     const disc = Number(item.discount) > 0 ? ` · Disc ${formatMoney(item.discount)}` : "";
@@ -2217,8 +2239,8 @@ async function openFeeDetail(studentId, push = true) {
         <button type="button" class="small-btn" data-edit-receipt="${escapeHtml(item.receiptId)}">Edit</button>
         <button type="button" class="small-btn" data-delete-receipt="${escapeHtml(item.receiptId)}">Delete</button>
       </div>` : "";
-    return `<article class="fee-history-item"><div><strong>${title}${disc}</strong><span>Remaining ${remaining} · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div>${tools}<button type="button" class="small-btn" data-print-history="${escapeHtml(item.receiptId)}">Print</button></article>`;
-  }).join("") : emptyState("No payment history for this month.");
+    return `<article class="fee-history-item"><div><strong>${title}${disc}</strong><span>${monthShortLabel(String(item.month || "").slice(0, 7), true)} · Remaining ${remaining} · ${escapeHtml(item.paymentDate || "")} · ${new Date(item.recordedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span></div>${tools}<button type="button" class="small-btn" data-print-history="${escapeHtml(item.receiptId)}">Print</button></article>`;
+  }).join("") : emptyState("No payment history yet.");
   const showForm = canEditTab("fees") && (due > 0 || pendingAdmission > 0 || editing);
   const formAmount = editing ? Number(editing.paid || 0) : totalDue;
   const formDate = editing ? (editing.paymentDate || today) : today;
@@ -2228,7 +2250,7 @@ async function openFeeDetail(studentId, push = true) {
     <div class="fee-detail-student"><div class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</div><div><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber)}</span><span>${escapeHtml(getBatchName(student.batchId))} · ${escapeHtml(yearLabel(student.year))}</span><span class="badge ${totalDue > 0 ? "due" : "paid"}">${totalDue > 0 ? (due > 0 ? `Due ${formatMoney(due)}` : `Admission due`) : "Fully paid"}</span></div></div>
     <section class="fee-detail-section"><h3>Monthly fees</h3>${courses || emptyState("No invoices for this month.")}${admissionRow}<div class="fee-course-total"><strong>Total due${pendingAdmission > 0 ? " (incl. admission)" : ""}</strong><strong>${formatMoney(totalDue)}</strong></div>${due > 0 ? `<label class="due-note"><span>Note for ${escapeHtml(month)}</span><input id="feeDueNoteInput" type="text" maxlength="500" placeholder="Write a note…" value="${escapeHtml(state.dueNotes[`${studentId}|${month}`] || "")}" /></label>` : ""}</section>
     ${showForm ? `<form id="feeCollectionForm" class="fee-collection-form"><h3>${editing ? "Edit receipt" : "Collect payment"}</h3>${editing ? `<p class="muted-note">Saving replaces this receipt with the new amount and date.</p>` : (pendingAdmission > 0 ? `<p class="muted-note">Includes the one-time admission fee — later months never include it.</p>` : "")}<div class="fee-amount-row"><label><span>Amount (৳)</span><input id="feePaymentAmount" type="number" min="0" max="${editBase + pendingAdmission}" step="0.01" value="${formAmount}" required /></label><label class="discount-option"><input id="feeDiscountToggle" type="checkbox" ${formDiscount ? "checked" : ""} /><span>Discount</span></label></div><p id="feeDiscountPreview" class="discount-preview" hidden></p><label><span>Payment date</span><input id="feePaymentDate" type="date" value="${formDate}" required /></label><div class="form-actions"><button id="collectFeeBtn" class="primary-btn" type="submit">${editing ? "Update receipt" : "Collect"}</button>${editing ? `<button type="button" id="cancelEditReceiptBtn" class="secondary-btn">Cancel edit</button>` : ""}</div></form>` : ""}
-    <section class="fee-detail-section"><h3>Collection history</h3><div class="fee-history-list">${historyHtml}</div></section>`;
+    <section class="fee-detail-section"><h3>Collection history (all months)</h3><div class="fee-history-list">${historyHtml}</div></section>`;
   els.feeDetailPage.hidden = false;
   if (shouldPush) pushDetailState({ ccm: "fee-detail", studentId, view: currentRoute });
   els.feeDetailBody.querySelectorAll("[data-print-history]").forEach((button) => button.addEventListener("click", () => printExistingReceipt(button.dataset.printHistory, student, history)));
@@ -3184,7 +3206,7 @@ async function renderDashboard() {
   const monthlyCollection = (canView("fees") ? state.feePayments.filter((payment) => payment.payment_date?.slice(0, 7) === thisMonth).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0) + admissionSum((d) => (d || "").slice(0, 7) === thisMonth);
   const yearlyCollection = (canView("fees") ? state.feePayments.filter((payment) => payment.payment_date?.slice(0, 4) === thisYear).reduce((sum, payment) => sum + Number(payment.amount || 0), 0) : 0) + admissionSum((d) => (d || "").slice(0, 4) === thisYear);
   const monthlyExpense = state.money.filter((entry) => entry.type === "expense" && entry.date?.slice(0, 7) === thisMonth).reduce((sum, entry) => sum + entry.amount, 0);
-  els.homeTotalDue.textContent = formatMoney(allDue);
+  els.homeStudentsTotal.textContent = toNum(state.students.length);
   els.homeTotalCollection.textContent = formatMoney(totalCollection);
   els.homeDailyCollection.textContent = formatMoney(dailyCollection);
   els.homeMonthlyCollection.textContent = formatMoney(monthlyCollection);
@@ -3479,23 +3501,26 @@ function renderReminders() {
   els.dueSubjectFilter.value = dueSubjectFilter;
 
   const dueStudents = state.students
-    .filter((student) => {
+    .map((student) => ({ student, months: unpaidMonthsFor(student.id) }))
+    .filter(({ student, months }) => {
       if (student.status !== "active") return false;
       if (dueYearFilter !== "all" && student.year !== dueYearFilter) return false;
       if (dueSubjectFilter !== "all" && !studentInCourse(student, dueSubjectFilter)) return false;
-      return monthDue(student.id, thisMonth) > 0;
+      return months.length > 0;
     })
-    .sort((a, b) => monthDue(b.id, thisMonth) - monthDue(a.id, thisMonth));
+    .sort((a, b) => studentTotalDue(b.student.id) - studentTotalDue(a.student.id));
   els.reminderDue.innerHTML = dueStudents.length
-    ? dueStudents.map((student) => {
-        const due = monthDue(student.id, thisMonth);
+    ? dueStudents.map(({ student, months }) => {
+        const due = studentTotalDue(student.id);
         const note = state.dueNotes[`${student.id}|${thisMonth}`] || "";
         return `<div class="due-item">
-          <button class="fee-student-card" type="button" data-due-student="${student.id}">
-            <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
-            <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
-            <span class="fee-student-balance"><strong class="badge due">Due ${formatMoney(due)}</strong></span>
-          </button>
+          <div class="fee-card-row">
+            <button class="fee-student-card" type="button" data-due-student="${student.id}">
+              <span class="student-avatar" aria-hidden="true">${escapeHtml(student.name.charAt(0).toUpperCase())}</span>
+              <span class="fee-student-copy"><strong>${escapeHtml(student.name)}</strong><span translate="no">${escapeHtml(student.studentNumber || "")}</span><span>${escapeHtml(yearLabel(student.year))}</span></span>
+            </button>
+          </div>
+          <div class="fee-badge-row"><strong class="badge pay-badge is-unpaid">Due ${formatMoney(due)} · ${dueMonthsBadge(months)}</strong></div>
           <label class="due-note"><span>Note for this month</span><input type="text" maxlength="500" data-due-note="${student.id}" placeholder="Write a note…" value="${escapeHtml(note)}" /></label>
         </div>`;
       }).join("")

@@ -57,9 +57,12 @@ same live database e thake. localStorage ar nei.
     month a student is unpaid for (earliest unpaid month).
 17. Run `supabase/20261023_attendance_due_months.sql` — the badge names the
     unpaid months (up to three) and drops the amount.
-18. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
+18. Run `supabase/20261024_fee_backfill.sql` — aligns every enrollment and
+    month's invoice with the current course/package fee (fixes students that
+    kept an old, higher package price).
+19. In **Authentication > Sign In / Providers > Email**, turn **Confirm email**
     off if users should be created without email confirmation.
-19. Create the owner account in **Authentication > Users > Add user** and copy
+20. Create the owner account in **Authentication > Users > Add user** and copy
     its UID. Run this once in the SQL Editor:
 
 ```sql
@@ -69,7 +72,7 @@ values ('PASTE-UID-HERE', 'admin', 'admin',
   true);
 ```
 
-20. Onno user ra ekhon **Settings > User management** thekei banano jabe
+21. Onno user ra ekhon **Settings > User management** thekei banano jabe
     (super admin login kore). Password minimum 6 characters (Supabase Auth rule).
 
 ## 2. Admin-users Edge Function
